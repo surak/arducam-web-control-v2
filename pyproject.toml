@@ -1,0 +1,73 @@
+[project]
+name = "arducam-ptz"
+version = "0.1.0"
+description = "Responsive web + CLI control for an Arducam 16 MP autofocus camera on a PCA9685 pan-tilt rig"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Alexandre Strube" }]
+# Deliberately NOT listed: picamera2 / libcamera. They are Debian packages on
+# Raspberry Pi OS (python3-picamera2 pulls the matching libcamera bindings) and
+# installing them from PyPI instead breaks the ABI against the system libcamera.
+# hardware/camera.py imports them lazily and reports "unavailable" if missing.
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "smbus2>=0.5.0",
+    "numpy>=1.26",
+    "pillow>=10.4",
+    "typer>=0.15",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+# The CLI client and the server are separate entry points on purpose: the CLI
+# only ever speaks HTTP to the server, which is what proves the hardware layer
+# is detached from any one front-end (phone app, shell script, whatever).
+arducam = "arducam_ptz.cli:main"
+arducam-server = "arducam_ptz.server:main"
+
+[project.urls]
+Source = "https://github.com/alex/arducam-web-control-v2"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/arducam_ptz"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "config", "docs", "README.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
+markers = [
+    "hardware: talks to the real camera / focus motor / servos (deselect with '-m \"not hardware\"')",
+]
+log_cli_level = "INFO"
+
+[tool.coverage.run]
+source = ["arducam_ptz"]
+branch = true
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "ARG", "PTH"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests intentionally poke at private helpers and print diagnostics.
+"tests/*" = ["ARG", "PTH"]

@@ -1,0 +1,27 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- Environments (recreate with: uv venv --system-site-packages && uv sync) ---
+.venv/
+venv/
+
+# --- Runtime state that must never be committed ---
+# Captured photos and generated thumbnails are user data, not source.
+photos/
+.thumbs/
+# Local deployments override the example config; never commit site settings.
+arducam.toml
+*.log
+
+# --- Tooling ---
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.DS_Store
