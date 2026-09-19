@@ -70,4 +70,10 @@ select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "ARG", "PTH"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests intentionally poke at private helpers and print diagnostics.
-"tests/*" = ["ARG", "PTH"]
+# E501 is allowed in tests because several fixtures are byte-faithful captures of
+# real device output (`v4l2-ctl --list-ctrls`), which run longer than 110 columns.
+"tests/*" = ["ARG", "PTH", "E501"]
+# camera.py implements picamera2's encoder callback. Its parameter list is fixed
+# by the library (and its arity has changed between releases), so unused
+# arguments there are not a smell.
+"src/arducam_ptz/hardware/camera.py" = ["ARG002"]
