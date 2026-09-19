@@ -231,9 +231,7 @@ class Settings(BaseSettings):
 
     def simulate_everything(self) -> bool:
         """True when no real hardware should be touched at all."""
-        return bool(
-            self.simulate or self.camera.simulate or self.pan_tilt.simulate or self.focus.simulate
-        )
+        return bool(self.simulate or self.camera.simulate or self.pan_tilt.simulate or self.focus.simulate)
 
 
 def _absolutise(settings: Settings, base: Path) -> Settings:
