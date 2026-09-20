@@ -33,9 +33,10 @@ restart cannot set the rig moving, and it still remembers where it was pointing.
 
 **Evidence.** The old app's `set_frequency()` multiplied the requested frequency by
 `0.8449` before computing the prescale, landing on 119; the datasheet arithmetic on a
-nominal 25 MHz oscillator gives 101 for the same 60 Hz request. The constant is
-uncommented in the original source, so its origin is lost — treat it as a measured
-property of this board and measure any other board before copying it.
+nominal 25 MHz oscillator gives 101 for the same 60 Hz request. The constant appears once,
+uncommented, in the whole original project — so the honest position is that it is a
+correction for *something* on this board and nobody recorded what. Treat it as a property
+of this rig, not a truth about PCA9685s, and measure any other board before copying it.
 
 **This code.** Reproduces the old arithmetic exactly — `pwm_frequency_hz = 60.0`,
 `pwm_frequency_correction = 0.8449`, correction applied to the *prescale only* while the

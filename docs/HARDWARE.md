@@ -34,19 +34,30 @@ For a 60 Hz request that gives **101**. This board runs at **119**, and that dif
 the single most load-bearing number in the whole project:
 
     frequency_requested = 60 Hz
-    pwm_frequency_correction = 0.8449        # measured on this board, not a preference
+    pwm_frequency_correction = 0.8449        # inherited from the original project
     prescale = round(25e6 / (4096 * 60 * 0.8449)) - 1 = 119
 
-The old app arrived at 119 through `set_frequency()`, which multiplies the requested
-frequency by **0.8449** before deriving the prescale. That constant carries no comment in
-the original source, so where it came from is lost to history — but it is a measured
-property of *this board*, and it is the difference between a rig that sits still and one
-that does not. What matters operationally is that 119 is the value this rig has always run
-at, and
-`tests/test_hardware.py::test_prescale_matches_the_rig_the_hardware_was_calibrated_on`
-asserts both 119 and the 101 a datasheet-nominal oscillator would give, so nobody can
-"correct" it back by accident. Do not carry 0.8449 to a different board without measuring
-it first.
+**Where that 0.8449 comes from is genuinely unknown.** It appears exactly once in the
+original project, uncommented, inside `set_frequency()` — and in none of its documentation.
+Two readings fit the source equally well, and the source cannot tell them apart:
+
+* a correction for a board whose oscillator is not the datasheet's 25 MHz — in which case
+  the real PWM rate here is ~43 Hz rather than the 60 Hz the code is asking for;
+* the original author's route to ~50.9 Hz, i.e. the 50 Hz hobby rate, expressed as a
+  multiplier on 60 instead of written as a plain frequency.
+
+What *is* certain, and therefore what the config and the tests pin down:
+
+* this project reproduces the original arithmetic exactly, so it commands the same pulse
+  widths and frame timing the servos in this bracket have always run at — the behaviour
+  that is known to work;
+* the datasheet-nominal 101 is **not** that, and is the first thing someone "fixing this
+  magic number" would reach for;
+* `tests/test_hardware.py::test_prescale_matches_the_rig_the_hardware_was_calibrated_on`
+  asserts both 119 and 101, so the difference is a documented decision instead of a
+  mystery constant;
+* do not carry 0.8449 to another board. Set `pwm_frequency_correction = 1.0`, measure the
+  rate the servo actually receives, and derive it from that.
 
 Two rules follow from that, and both are easy to break:
 

@@ -131,11 +131,11 @@ class PanTiltSettings(BaseModel):
     #: pulse mapping, so changing it silently rescales every angle by that ratio
     #: (50/60 = 17%). The travel limits below were measured in *this* domain.
     pwm_frequency_hz: float = Field(default=60.0, ge=24, le=1526)
-    #: Oscillator correction, applied to the prescale only. 0.8449 is a measured
-    #: property of this board, not a preference: it was found by trial on a real
-    #: servo in the original project, and it is what makes a commanded 90 deg land
-    #: in the middle of the travel instead of near a hard stop. A board that is not
-    #: this one starts at 1.0 and should be measured before servo limits are set.
+    #: Board correction, applied to the prescale only. 0.8449 is the original project's
+    #: constant for this board, carried over verbatim; where it was measured is not
+    #: recorded there. It is not a preference: this rig is quiet at the prescale it
+    #: produces (119) and the datasheet-nominal value (101) is not it. Another board
+    #: starts at 1.0 and is measured before its servo limits are trusted.
     pwm_frequency_correction: float = Field(default=0.8449, gt=0.1, le=2.0)
     #: Mechanical travel limits, measured on this platform's hard stops.
     pan_min: float = Field(default=60.0, ge=0, le=180)

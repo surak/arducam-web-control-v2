@@ -44,15 +44,15 @@ pan_channel = 1
 tilt_channel = 0
 min_pulse_us = 500
 max_pulse_us = 2500
-# The original rig ran its PCA9685 at 60 Hz through the Adafruit ServoKit driver, and
-# that is what the servos in this bracket were quiet at. (50 Hz, the hobby default,
-# gives them an audible buzz here.)
+# The frequency the original rig asked for, through ServoKit's driver (which applied the
+# correction below). Leave it alone: it feeds the angle -> pulse mapping, so changing it
+# rescales every commanded angle by that ratio (50/60 = 17%).
 pwm_frequency_hz = 60.0
-# This board's oscillator is not the 25 MHz the PCA9685 datasheet assumes - it measured
-# low by 15.5% - so the prescale is computed from frequency * 0.8449. It is the single
-# most important number in this file: the original app carried the same constant, and
-# with the datasheet's nominal clock the chip runs at ~42 Hz, i.e. the wrong pulse rate
-# for these servos. Changing it re-arms the shake.
+# The single most important number in this file, and the one nobody can fully explain: it
+# appears once, uncommented, in the original project, and nowhere in its documentation.
+# What is certain is that this rig is quiet at the prescale it produces (119) and that the
+# datasheet-nominal value for 60 Hz (101) is not it. docs/HARDWARE.md has the details.
+# Do not carry it to another board without measuring that board first.
 pwm_frequency_correction = 0.8449
 # Mechanical travel limits of this platform. Keep them: the camera hits the
 # bracket outside this window.

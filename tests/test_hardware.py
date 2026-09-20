@@ -124,13 +124,14 @@ class TestServoMapping:
         assert rig.settings.pwm_frequency_hz == 60.0
 
     def test_prescale_matches_the_rig_the_hardware_was_calibrated_on(self) -> None:
-        """60 Hz with this board's measured oscillator correction is prescale 119.
+        """60 Hz with the original project's 0.8449 gives prescale 119, and 101 without it.
 
-        This is the single most load-bearing number in the servo path. The original app
-        arrived at 119 through ServoKit plus a 0.8449 oscillator correction, and the
-        servos in this bracket are quiet at it. Trusting the datasheet's nominal 25 MHz
-        instead gives 101 (about 42 Hz) and the camera buzzes and shakes - so the test
-        pins both the corrected and the uncorrected value.
+        This is the single most load-bearing number in the servo path. The 0.8449 is
+        inherited verbatim - the original source records neither where it was measured nor
+        what against (docs/HARDWARE.md sets out both readings of it) - but the servos in
+        this bracket are quiet at the prescale it produces. The test pins the known-good
+        value *and* the datasheet-nominal one, so the difference is visible to whoever
+        next wonders why it is not 101.
         """
         from arducam_ptz.hardware.pca9685 import prescale_for
 

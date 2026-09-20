@@ -76,11 +76,12 @@ def prescale_for(frequency_hz: float, correction: float = 1.0) -> int:
     Datasheet section 7.3.5: ``period = 4096 * (prescale + 1) / oscillator``, with the
     nominal 25 MHz oscillator, so ``prescale = round(osc / (4096 * f)) - 1``.
 
-    ``correction`` scales *only* the frequency, never the pulse arithmetic: it exists
-    because this board's oscillator is measurably slower than the Datasheet's 25 MHz. It
-    is a separate function so the one number that decides whether the servos sit still
-    can be asserted in a test without an I2C bus attached - see the tests, which pin the
-    historical 119 that the original rig ran at.
+    ``correction`` scales *only* the frequency, never the pulse arithmetic. It is a
+    documented-nowhere constant inherited from the original project: nobody recorded what
+    it was measured against, so docs/HARDWARE.md sets out what is known and what is not.
+    What is certain is that this rig is quiet at the prescale it produces (119) and that
+    the datasheet-nominal value (101) is not it - so this is a separate, pure function,
+    assertable in a test with no I2C bus attached.
     """
     raw = int(round(OSCILLATOR_HZ / (TICKS_PER_PERIOD * frequency_hz * correction)) - 1)
     return int(clamp(raw, 3, 255))
@@ -106,12 +107,12 @@ class Pca9685:
         self.address = address
         self.frequency_hz = frequency_hz
         #: Multiplier applied to the *prescale* calculation only (see
-        #: :meth:`set_frequency`): it compensates for this board's oscillator, which
-        #: is not the nominal 25 MHz the datasheet assumes. The measured value for
-        #: this rig (0.8449) comes from the original project, where it was tuned
-        #: against a real servo. Keep it at 1.0 for a different board, or measure it
-        #: again - with the wrong value every pulse is a few hundred microseconds
-        #: off, which is 20-30 degrees of servo travel.
+        #: :meth:`set_frequency`). 0.8449 is the original project's constant for this
+        #: board, carried over verbatim: its origin is not recorded there (one
+        #: uncommented line, no notes), but this is the value the servos in this bracket
+        #: are quiet at. A different board starts at 1.0 and gets measured before its
+        #: limits are trusted - with the wrong value every pulse is hundreds of
+        #: microseconds out, which is of order twenty degrees of servo travel.
         self.frequency_correction = frequency_correction
         self._bus: SMBus | None = None
         self._prescale = 0
@@ -196,10 +197,10 @@ class Pca9685:
         the oscillator needs ~500 us to come back up, hence the sleeps.
         """
         assert self._bus is not None
-        # The correction is applied here and *only* here: it compensates the chip's
-        # oscillator, so it changes how long a period really lasts, while the tick
-        # arithmetic below stays in the nominal domain the servo was calibrated in.
-        # The two must not both be corrected - that cancels out to a wrong pulse.
+        # The correction is applied here and *only* here: it changes the period the chip
+        # actually produces, while the tick arithmetic below stays in the nominal domain
+        # the servo was calibrated in. The two must not both be corrected - that cancels
+        # out into a wrong pulse.
         prescale = prescale_for(frequency_hz, self.frequency_correction)
         old_mode = self._bus.read_byte_data(self.address, MODE1)
         self._bus.write_byte_data(self.address, MODE1, (old_mode & 0x7F) | SLEEP)
