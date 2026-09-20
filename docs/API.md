@@ -232,7 +232,9 @@ The things that are easy to get wrong, written down because every client needs t
 ## CLI equivalents
 
 The CLI is a thin wrapper over these calls, so anything below is a one-liner from a
-shell:
+shell. Its global options (``--url``, ``--token``, ``--json``) come *before* the
+subcommand - ``arducam --json status``, not ``arducam status --json`` - because typer
+parses the group callback first:
 
 | API | CLI |
 | --- | --- |
@@ -242,7 +244,7 @@ shell:
 | `POST /ptz/center` | `arducam center` |
 | `POST /ptz/release` | `arducam release` |
 | `POST /focus` | `arducam focus 700` |
-| `POST /focus/nudge` | `arducam focus-nudge --steps 24` |
+| `POST /focus/nudge` | `arducam focus-nudge 24` |
 | `POST /focus/autofocus` | `arducam autofocus --wait` |
 | `GET /stream.mjpg` | `arducam stream -o out.mjpg` |
 | `POST /captures` | `arducam capture --download shot.jpg` |

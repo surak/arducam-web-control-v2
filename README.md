@@ -64,6 +64,39 @@ uv run arducam status            # same machine, from the terminal
 
 Open `http://<pi-address>:8080/` on your phone or laptop.
 
+## Command line
+
+`arducam` is not a second implementation of the camera - it is an HTTP client, so it runs
+on any machine that can reach the Pi (and it is the proof that the hardware layer is not
+welded to the web page). Global options `--url`, `--token` and `--json` go *before* the
+subcommand:
+
+```bash
+export ARDUCAM_URL=http://<pi-address>:8080
+
+uv run arducam status                    # health, angles, focus, stream statistics
+uv run arducam move --pan 20 --tilt -5   # absolute; omitted axes stay put
+uv run arducam nudge --pan 3             # relative: a shell loop is a joystick
+uv run arducam center
+uv run arducam release                   # cut servo pulses, axes go limp
+uv run arducam focus 700                 # raw lens position (0-4095)
+uv run arducam focus-nudge 40
+uv run arducam autofocus --wait          # sweep, then report what it chose
+uv run arducam autofocus --region 0.3,0.3,0.4,0.4 --wait   # focus on that patch
+uv run arducam capture --download shot.jpg
+uv run arducam photos --limit 20
+uv run arducam get-photo <name> -o local.jpg --max-dim 320
+uv run arducam delete-photo <name> --yes
+uv run arducam stream -o preview.mjpg --seconds 10         # also a bandwidth probe
+uv run arducam serve --simulate --port 8099                # run a server with fake hardware
+```
+
+`--json` prints the raw payload, which is the cheap way to script the camera:
+
+```bash
+uv run arducam --json status | jq '.ptz.pan.angle'
+```
+
 ## Documentation
 
 | document | what is in it |
