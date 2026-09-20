@@ -82,10 +82,12 @@ class HardwareBundle:
         Never raises: a rig that boots half-alive is more useful than a server
         that refuses to run.
         """
-        # reopen() only means something for real hardware; simulated backends
-        # report availability instead.
-        servo_ok = self.pan_tilt.reopen() or self.pan_tilt.availability().available
-        focus_ok = self.focus.reopen() or self.focus.availability().available
+        # open(), not reopen(): this is a first start, and reopen() logs "retrying
+        # PCA9685 initialisation", which made every clean boot look like a recovery.
+        # reopen() is now only reached from the mid-request failure path in the PTZ
+        # service, so that message in a log really does mean the bus misbehaved.
+        servo_ok = self.pan_tilt.open()
+        focus_ok = self.focus.open()
         logger.info("pan/tilt: %s", self.pan_tilt.availability().detail)
         logger.info("focus:    %s", self.focus.availability().detail)
         # The camera is started last: it is the only component whose absence

@@ -51,10 +51,39 @@ ALLCALL_ADDRESS = 0x70
 OSCILLATOR_HZ = 25_000_000
 TICKS_PER_PERIOD = 4096
 
+#: How long to leave every output switched off after the board answers, before and
+#: after the frequency change. The PCA9685 comes up with the *power-on* prescale
+#: (about 200 Hz, not hobby-servo 50 Hz) and with every LED register at zero, which
+#: means "switch on at tick 0, switch off at tick 0" - a level that a servo reads as
+#: garbage. Writing the register map without this quiet window is what makes a
+#: pan-tilt rig thrash: the servo chases the out-of-spec pulses, is yanked to a hard
+#: stop, and keeps hunting there for as long as the garbage lasts.
+#:
+#: The original app hit exactly this and fixed it with a "quiet startup sequence"
+#: (all 16 channels off, 0.2 s either side of the initialisation). Those two sleeps
+#: are load-bearing, not politeness - the servos are electrically silent meanwhile.
+QUIET_WINDOW_S = 0.2
+
 #: Writing the four LED registers is not atomic, so a write that straddles the
 #: counter wrapping produces a visible servo glitch. Pausing between the ON and
 #: OFF halves avoids it; the delay is far below any servo's reaction time.
 GLITCH_GUARD_S = 0.002
+
+
+def prescale_for(frequency_hz: float, correction: float = 1.0) -> int:
+    """Return the PRESCALE register value for a target PWM frequency.
+
+    Datasheet section 7.3.5: ``period = 4096 * (prescale + 1) / oscillator``, with the
+    nominal 25 MHz oscillator, so ``prescale = round(osc / (4096 * f)) - 1``.
+
+    ``correction`` scales *only* the frequency, never the pulse arithmetic: it exists
+    because this board's oscillator is measurably slower than the Datasheet's 25 MHz. It
+    is a separate function so the one number that decides whether the servos sit still
+    can be asserted in a test without an I2C bus attached - see the tests, which pin the
+    historical 119 that the original rig ran at.
+    """
+    raw = int(round(OSCILLATOR_HZ / (TICKS_PER_PERIOD * frequency_hz * correction)) - 1)
+    return int(clamp(raw, 3, 255))
 
 
 class Pca9685Error(RuntimeError):
@@ -68,13 +97,22 @@ class Pca9685:
         self,
         bus_number: int = 1,
         address: int = 0x40,
-        frequency_hz: float = 50.0,
+        frequency_hz: float = 60.0,
+        frequency_correction: float = 1.0,
         logger: logging.Logger | None = None,
     ) -> None:
         self.log = logger or logging.getLogger(__name__)
         self.bus_number = bus_number
         self.address = address
         self.frequency_hz = frequency_hz
+        #: Multiplier applied to the *prescale* calculation only (see
+        #: :meth:`set_frequency`): it compensates for this board's oscillator, which
+        #: is not the nominal 25 MHz the datasheet assumes. The measured value for
+        #: this rig (0.8449) comes from the original project, where it was tuned
+        #: against a real servo. Keep it at 1.0 for a different board, or measure it
+        #: again - with the wrong value every pulse is a few hundred microseconds
+        #: off, which is 20-30 degrees of servo travel.
+        self.frequency_correction = frequency_correction
         self._bus: SMBus | None = None
         self._prescale = 0
         #: Last value written per channel, so the 20 Hz writer does not hammer the
@@ -109,11 +147,47 @@ class Pca9685:
         )
 
     def _initialise(self) -> None:
+        """Bring the board up without ever emitting a malformed servo pulse.
+
+        Order matters and is the fix for a rig that shakes itself apart on start:
+
+        1. switch *every* output off while the chip still runs on its power-on
+           prescale - the servos see no pulses at all, instead of a ~200 Hz train
+           they cannot interpret;
+        2. wait out the quiet window;
+        3. only then program the prescale (which needs the chip asleep);
+        4. wait again, and re-assert "all off" in case the wake-up blipped a channel.
+
+        Nothing is driven here. The first pulse is sent the first time a client asks
+        for a move - see ``PanTiltService`` (it starts released on purpose).
+        """
         assert self._bus is not None
-        # Totem-pole outputs, then auto-increment so a channel is one 4-byte write.
+        # Totem-pole outputs (what a servo's signal wire wants), then auto-increment.
         self._bus.write_byte_data(self.address, MODE2, OUTDRV)
         self._bus.write_byte_data(self.address, MODE1, AI)
+
+        self.all_off()
+        time.sleep(QUIET_WINDOW_S)
         self.set_frequency(self.frequency_hz)
+        time.sleep(QUIET_WINDOW_S)
+        self.all_off()
+        self.log.debug("PCA9685 initialised quiet: every output off, %.1f Hz", self.frequency_hz)
+
+    def all_off(self) -> None:
+        """Switch all 16 channels fully off (no pulses at all).
+
+        Cheap insurance: a channel that was left on by a previous run - or a stray
+        startup pulse on any of the fourteen channels this rig does not use - stops
+        doing whatever it was doing.
+        """
+        assert self._bus is not None, "Pca9685.open() has not been called"
+        for channel in range(16):
+            base = LED0_ON_L + 4 * channel
+            self._bus.write_byte_data(self.address, base, 0)
+            self._bus.write_byte_data(self.address, base + 1, 0)
+            self._bus.write_byte_data(self.address, base + 2, 0)
+            self._bus.write_byte_data(self.address, base + 3, 0x10)  # OFF_H bit 4: full off
+        self._last_ticks.clear()
 
     def set_frequency(self, frequency_hz: float) -> None:
         """Program the PWM frequency.
@@ -122,8 +196,11 @@ class Pca9685:
         the oscillator needs ~500 us to come back up, hence the sleeps.
         """
         assert self._bus is not None
-        prescale = int(round(OSCILLATOR_HZ / (TICKS_PER_PERIOD * frequency_hz)) - 1)
-        prescale = int(clamp(prescale, 3, 255))
+        # The correction is applied here and *only* here: it compensates the chip's
+        # oscillator, so it changes how long a period really lasts, while the tick
+        # arithmetic below stays in the nominal domain the servo was calibrated in.
+        # The two must not both be corrected - that cancels out to a wrong pulse.
+        prescale = prescale_for(frequency_hz, self.frequency_correction)
         old_mode = self._bus.read_byte_data(self.address, MODE1)
         self._bus.write_byte_data(self.address, MODE1, (old_mode & 0x7F) | SLEEP)
         self._bus.write_byte_data(self.address, PRESCALE, prescale)

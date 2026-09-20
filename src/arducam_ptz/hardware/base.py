@@ -113,13 +113,27 @@ class ServoHardware(ABC):
     def release(self) -> None:
         """Stop sending pulses so the servos go limp (no holding torque).
 
-        The old app had a 'release' endpoint that only set a flag in a JavaScript
-        variable, which is why the servos kept buzzing after "releasing" them.
+        This is the real emergency control, and it is deliberately not "go to the middle".
+        The old app's only stop button ("EMERGENCY STOP", key 'e') posted to
+        /api/servo/emergency-reset, whose handler called servo.reset() - so pressing stop
+        on a thrashing rig *drove both servos to 90 degrees*, which is the last thing you
+        want a shaking machine to do. This one cuts the pulse train instead: the axes lose
+        torque immediately and stay wherever they are.
         """
 
     @abstractmethod
     def close(self) -> None:
         """Release the I2C bus. Must not raise."""
+
+    def open(self) -> bool:
+        """Bring the backend up for the first time. Returns True when it is usable.
+
+        Distinct from :meth:`reopen` on purpose: conflating the two made a normal
+        startup log "retrying PCA9685 initialisation", so a log reader could not tell a
+        clean boot from a rig that had actually fallen over and recovered. Backends with
+        nothing to acquire (the simulated ones) inherit this and just report themselves.
+        """
+        return self.availability().available
 
     def reopen(self) -> bool:
         """Re-initialise after a failure. Returns True when the rig is usable again."""
@@ -142,6 +156,10 @@ class FocusMotor(ABC):
     @abstractmethod
     def get_position(self) -> int | None:
         """Read the value back from the driver, or None when it cannot be read."""
+
+    def open(self) -> bool:
+        """Bring the motor up for the first time. Returns True when it is usable."""
+        return self.availability().available
 
     def reopen(self) -> bool:
         """Re-initialise after a failure. Returns True when usable again."""

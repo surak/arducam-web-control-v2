@@ -121,7 +121,22 @@ class TestServoMapping:
         settings = PanTiltSettings(pan_channel=7, tilt_channel=9)
         rig = ServoRig(settings)
         assert (settings.pan_channel, settings.tilt_channel) == (7, 9)
-        assert rig.settings.pwm_frequency_hz == 50.0
+        assert rig.settings.pwm_frequency_hz == 60.0
+
+    def test_prescale_matches_the_rig_the_hardware_was_calibrated_on(self) -> None:
+        """60 Hz with this board's measured oscillator correction is prescale 119.
+
+        This is the single most load-bearing number in the servo path. The original app
+        arrived at 119 through ServoKit plus a 0.8449 oscillator correction, and the
+        servos in this bracket are quiet at it. Trusting the datasheet's nominal 25 MHz
+        instead gives 101 (about 42 Hz) and the camera buzzes and shakes - so the test
+        pins both the corrected and the uncorrected value.
+        """
+        from arducam_ptz.hardware.pca9685 import prescale_for
+
+        assert prescale_for(60.0, 0.8449) == 119
+        assert prescale_for(60.0) == 101  # what the nominal datasheet clock would give
+        assert PanTiltSettings().pwm_frequency_correction == 0.8449
 
     def test_unavailable_rig_does_not_pretend_to_move(self) -> None:
         rig = ServoRig(PanTiltSettings())  # never opened: no bus

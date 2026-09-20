@@ -126,10 +126,17 @@ class PanTiltSettings(BaseModel):
     tilt_channel: int = Field(default=0, ge=0, le=15)
     min_pulse_us: int = Field(default=500, ge=200, le=3000)
     max_pulse_us: int = Field(default=2500, ge=500, le=5000)
-    #: 50 Hz is the hobby-servo standard. The old code wrote a prescale for a
-    #: nominal 60 Hz multiplied by 0.8449, which lands on ~50.7 Hz - the same
-    #: thing, expressed as a magic number. It is a plain setting here.
-    pwm_frequency_hz: float = Field(default=50.0, ge=24, le=1526)
+    #: Nominal PWM frequency. 60 Hz is what this rig was tuned with - do not
+    #: "correct" it to the 50 Hz hobby standard: this number feeds the angle ->
+    #: pulse mapping, so changing it silently rescales every angle by that ratio
+    #: (50/60 = 17%). The travel limits below were measured in *this* domain.
+    pwm_frequency_hz: float = Field(default=60.0, ge=24, le=1526)
+    #: Oscillator correction, applied to the prescale only. 0.8449 is a measured
+    #: property of this board, not a preference: it was found by trial on a real
+    #: servo in the original project, and it is what makes a commanded 90 deg land
+    #: in the middle of the travel instead of near a hard stop. A board that is not
+    #: this one starts at 1.0 and should be measured before servo limits are set.
+    pwm_frequency_correction: float = Field(default=0.8449, gt=0.1, le=2.0)
     #: Mechanical travel limits, measured on this platform's hard stops.
     pan_min: float = Field(default=60.0, ge=0, le=180)
     pan_max: float = Field(default=120.0, ge=0, le=180)
@@ -146,6 +153,16 @@ class PanTiltSettings(BaseModel):
     #: How often desired->written, and the minimum spacing between bus writes.
     write_rate_hz: float = Field(default=20.0, ge=1, le=100)
     min_write_interval_ms: float = Field(default=40.0, ge=5, le=1000)
+    #: Quiet time after each servo write, while the camera may be streaming.
+    #:
+    #: Not a guess and not a fudge: the original project traced "servos thrash during
+    #: use" to I2C contention between picamera2's frame pipeline and PCA9685 writes on
+    #: this Pi, and fixed it with a 5 ms gap after every frame. The same effect is
+    #: reachable with no gap at all on an idle bench, which is what makes it nasty -
+    #: it only shows up once the camera is streaming. Zero is allowed for a rig with a
+    #: separate I2C controller, and it costs at most `write_rate_hz` * this per second
+    #: of writer-thread time (20 Hz x 5 ms = 1%).
+    i2c_settle_ms: float = Field(default=5.0, ge=0, le=50)
 
     @model_validator(mode="after")
     def _check_ranges(self) -> PanTiltSettings:

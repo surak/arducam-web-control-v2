@@ -53,7 +53,14 @@ class PanTiltService:
             self._bounded("tilt", settings.tilt_center),
         )
         self._written: tuple[float, float] | None = None
-        self._released = False
+        # Start *released*: the board comes up with every channel switched off (see
+        # Pca9685._initialise) and nothing is driven until the first move command.
+        # The old app learned this the hard way - it engaged the servos during
+        # start-up, while the PCA9685 was still emitting its power-on garbage, and
+        # the rig shook itself around until someone unplugged it. ``_apply``
+        # re-arms the axes on the first real command, so a client still finds the
+        # camera where it left it after a restart, just not moving by itself.
+        self._released = True
         self._clamps: list[ClampReport] = []
         self._last_write: float | None = None
         self._failures = 0

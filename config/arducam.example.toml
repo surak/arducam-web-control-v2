@@ -44,7 +44,16 @@ pan_channel = 1
 tilt_channel = 0
 min_pulse_us = 500
 max_pulse_us = 2500
-pwm_frequency_hz = 50.0
+# The original rig ran its PCA9685 at 60 Hz through the Adafruit ServoKit driver, and
+# that is what the servos in this bracket were quiet at. (50 Hz, the hobby default,
+# gives them an audible buzz here.)
+pwm_frequency_hz = 60.0
+# This board's oscillator is not the 25 MHz the PCA9685 datasheet assumes - it measured
+# low by 15.5% - so the prescale is computed from frequency * 0.8449. It is the single
+# most important number in this file: the original app carried the same constant, and
+# with the datasheet's nominal clock the chip runs at ~42 Hz, i.e. the wrong pulse rate
+# for these servos. Changing it re-arms the shake.
+pwm_frequency_correction = 0.8449
 # Mechanical travel limits of this platform. Keep them: the camera hits the
 # bracket outside this window.
 pan_min = 60.0
@@ -60,6 +69,11 @@ invert_tilt = false
 max_step_degrees = 0.0
 write_rate_hz = 20.0
 min_write_interval_ms = 40.0
+# Quiet gap after each servo write, in milliseconds. The original project traced
+# "servos thrash while the camera is streaming" to I2C contention between the camera
+# pipeline and PCA9685 writes; 5 ms is what fixed it there. 0 is fine on an idle bench,
+# which is exactly why this is easy to get wrong.
+i2c_settle_ms = 5.0
 
 [focus]
 simulate = false

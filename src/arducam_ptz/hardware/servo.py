@@ -35,6 +35,7 @@ class ServoRig(ServoHardware):
             bus_number=settings.i2c_bus,
             address=settings.i2c_address,
             frequency_hz=settings.pwm_frequency_hz,
+            frequency_correction=settings.pwm_frequency_correction,
             logger=self.log,
         )
         self._available = False
@@ -83,6 +84,12 @@ class ServoRig(ServoHardware):
         self._chip.set_pulse_us(self.settings.pan_channel, self.angle_to_pulse(pan))
         self._chip.set_pulse_us(self.settings.tilt_channel, self.angle_to_pulse(tilt))
         self._released = False
+        # Leave the bus alone for a moment: the camera pipeline shares this Pi, and a
+        # servo write landing inside a frame transfer is how a correct angle turns
+        # into a corrupted pulse (and a twitching camera). See i2c_settle_ms.
+        settle_ms = self.settings.i2c_settle_ms
+        if settle_ms > 0:
+            time.sleep(settle_ms / 1000.0)
 
     def release(self) -> None:
         """Cut the pulses so both servos go limp and stop drawing current."""
