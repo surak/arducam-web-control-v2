@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="arducam-ptz">
+  <defs>
+    <linearGradient id="lens" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5aa4ff"/>
+      <stop offset="1" stop-color="#2f6fbf"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="42" fill="#0b0e13"/>
+  <!-- camera body with a tilt bracket, the shape of the thing this controls -->
+  <rect x="30" y="66" width="132" height="72" rx="14" fill="#1d232d" stroke="#2a3240" stroke-width="4"/>
+  <circle cx="96" cy="102" r="28" fill="#05070a" stroke="#2a3240" stroke-width="4"/>
+  <circle cx="96" cy="102" r="16" fill="url(#lens)"/>
+  <circle cx="88" cy="94" r="5" fill="#dfe9ff" opacity="0.85"/>
+  <rect x="48" y="150" width="96" height="10" rx="5" fill="#2a3240"/>
+  <circle cx="48" cy="155" r="9" fill="#38d39f"/>
+  <circle cx="144" cy="155" r="9" fill="#38d39f"/>
+</svg>

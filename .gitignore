@@ -19,6 +19,8 @@ arducam.toml
 *.log
 
 # --- Tooling ---
+# Screenshots written by scripts/ui_probe.py (named after the viewport it used).
+ui_shot_*.png
 .pytest_cache/
 .ruff_cache/
 .coverage

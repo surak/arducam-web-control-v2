@@ -1,0 +1,738 @@
+/*
+ * arducam-ptz - interface styles.
+ *
+ * Design goals, in order:
+ *
+ * 1. The live image and the controls are always both on screen. The shell is a fixed
+ *    grid that fills the viewport (100dvh, so mobile browser bars are accounted for);
+ *    nothing scrolls except the controls column on large screens.
+ * 2. The layout is mobile-first. Portrait phone: image on top, pad bottom-left, focus
+ *    and the shutter bottom-right - all thumb-reachable. Landscape phone and desktop:
+ *    image left, a controls column on the right.
+ * 3. Touching a control never zooms, selects text or scrolls the page. That is done
+ *    with `touch-action: none` on the interactive surfaces, `user-select: none` on the
+ *    chrome, `overscroll-behavior: none` on the scroller and `-webkit-tap-highlight-color`
+ *    cleared - NOT by disabling pinch-zoom in the viewport meta tag, which would break
+ *    accessibility for everyone to fix one bug.
+ * 4. No layout thrash while dragging: the pad moves with a CSS transform on a small
+ *    absolutely positioned knob, and state readouts are updated as text, never by
+ *    rebuilding DOM.
+ */
+
+:root {
+  --bg: #0b0e13;
+  --panel: #151a22;
+  --panel-2: #1d232d;
+  --line: #2a3240;
+  --text: #e8edf5;
+  --muted: #8b97a8;
+  --accent: #4c9aff;
+  --accent-2: #38d39f;
+  --danger: #ff6b6b;
+  --radius: 14px;
+  --pad-size: min(40vw, 168px);
+  --shadow: 0 6px 24px rgb(0 0 0 / 45%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/*
+ * Every panel, overlay and drawer in this interface is shown and hidden by toggling
+ * the `hidden` attribute from app.js (`el.overlay.hidden = true`). The UA stylesheet
+ * implements that attribute as `[hidden] { display: none }` - the weakest origin in
+ * the cascade - so any author rule that sets `display` silently wins over it, and
+ * .stream-overlay (`display: grid`) and .drawer (`display: flex`) both do.
+ *
+ * The failure that caused: the dark "stream unavailable / Reconnect" overlay never
+ * went away, so a *working* camera image stayed hidden behind it, and the help drawer
+ * could be opened but not closed - the ✕ was setting `hidden = true` and nothing
+ * happened. One rule here fixes every element that is toggled this way, including the
+ * photo gallery, the scrim and the autofocus progress bar.
+ */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  /* The page itself never scrolls: this is an app shell, not a document. On iOS the
+     rubber-band overscroll is what made the old page feel like a broken website. */
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Selecting text by accident while dragging is one of the old bugs; the chrome is
+     not text a user needs to select. Anything meant to be copied overrides this. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100dvh;
+  /* Clear the notch (top) and the home indicator (bottom) on iOS. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+/* ---------------------------------------------------------------- top bar */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #12171f, #0e131a);
+}
+
+.brand {
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+
+.topbar-meta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 4%);
+  transition: background 0.2s;
+}
+
+.dot.is-live {
+  background: var(--accent-2);
+}
+
+.dot.is-stale {
+  background: #e0b341;
+}
+
+.dot.is-down {
+  background: var(--danger);
+}
+
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.icon-btn:active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---------------------------------------------------------------- stage */
+
+.stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0; /* lets the image shrink instead of pushing the controls off screen */
+  padding: 8px;
+  overflow: hidden;
+  background: #05070a;
+}
+
+.stream {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #000;
+  /* Images are draggable by default; dragging the video would be nonsense. */
+  -webkit-user-drag: none;
+}
+
+.stream-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  justify-items: center;
+  background: rgb(5 7 10 / 82%);
+  color: var(--muted);
+  text-align: center;
+}
+
+.af-marker {
+  position: absolute;
+  border: 2px solid var(--accent-2);
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 60%) inset;
+  pointer-events: none;
+  animation: marker-in 0.18s ease-out;
+}
+
+@keyframes marker-in {
+  from {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+}
+
+.hud {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: rgb(5 7 10 / 65%);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------- controls */
+
+.controls {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.panel {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.panel-ptz {
+  grid-row: span 2;
+}
+
+.panel-capture {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.panel-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.readout {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.row > * {
+  flex: 1;
+}
+
+.btn {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #232b37;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  /* Tapping a button must be instant and must not wait for a double-tap-to-zoom check. */
+  touch-action: manipulation;
+}
+
+.btn:active {
+  background: #2f3947;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+}
+
+.btn-accent {
+  border-color: #2f6fbf;
+  background: #1d3f6b;
+}
+
+.btn.is-on {
+  border-color: var(--accent);
+}
+
+/* ---------------------------------------------------------------- pad */
+
+.pad {
+  position: relative;
+  width: var(--pad-size);
+  height: var(--pad-size);
+  margin: 2px auto 10px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 42%, #262f3c, #171d26 70%);
+  box-shadow: var(--shadow);
+  /* THE important line for the old bug: no page zoom, no text selection, no scroll
+     from a drag that starts here. */
+  touch-action: none;
+  cursor: grab;
+  overflow: hidden;
+}
+
+.pad:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.pad.is-dragging {
+  cursor: grabbing;
+}
+
+.pad-ring {
+  position: absolute;
+  inset: 18%;
+  border: 1px dashed rgb(255 255 255 / 9%);
+  border-radius: 50%;
+}
+
+.pad-hint {
+  position: absolute;
+  color: rgb(255 255 255 / 22%);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.pad-hint-up {
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.pad-hint-down {
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.pad-hint-left {
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.pad-hint-right {
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.pad-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 42%;
+  height: 42%;
+  margin: -21% 0 0 -21%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #5aa4ff, #2f6fbf);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 55%);
+  /* Moved with transform only, so dragging never triggers layout. */
+  transform: translate3d(0, 0, 0);
+  transition: transform 0.08s linear;
+  pointer-events: none;
+}
+
+.pad.is-dragging .pad-knob {
+  transition: none;
+}
+
+/* ---------------------------------------------------------------- focus */
+
+.slider {
+  width: 100%;
+  height: 32px;
+  margin: 0 0 8px;
+  background: transparent;
+  touch-action: pan-y; /* vertical page gestures stay with the browser, horizontal is ours */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: #2c3542;
+}
+
+.slider::-webkit-slider-thumb {
+  width: 24px;
+  height: 24px;
+  margin-top: -9px;
+  border: 2px solid #0d1219;
+  border-radius: 50%;
+  background: var(--accent);
+  -webkit-appearance: none;
+}
+
+.slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: #2c3542;
+}
+
+.slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border: 2px solid #0d1219;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.progress {
+  position: relative;
+  height: 8px;
+  margin: 8px 0;
+  border-radius: 4px;
+  background: #2c3542;
+  overflow: hidden;
+}
+
+.progress-bar {
+  width: 0;
+  height: 100%;
+  background: var(--accent-2);
+  transition: width 0.2s linear;
+}
+
+.progress-label {
+  position: absolute;
+  inset: 0;
+  font-size: 10px;
+  line-height: 8px;
+  text-align: center;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.switch input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+/* ---------------------------------------------------------------- shutter */
+
+.shutter {
+  width: 62px;
+  height: 62px;
+  flex: 0 0 auto;
+  border: 3px solid #38424f;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #fff, #cfd6df);
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: var(--shadow);
+}
+
+.shutter:active {
+  transform: scale(0.94);
+}
+
+.shutter.is-busy {
+  background: var(--muted);
+}
+
+.count {
+  display: inline-block;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #313b49;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- drawers */
+
+.drawer {
+  position: fixed;
+  z-index: 20;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Bottom sheet on phones, right-hand panel from 900 px up. */
+.drawer {
+  inset: auto 0 0 0;
+  max-height: 72dvh;
+  border-top: 1px solid var(--line);
+  border-radius: 18px 18px 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.drawer-head h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.thumb {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0d1219;
+}
+
+.thumb img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.thumb figcaption {
+  padding: 4px 6px;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thumb-actions {
+  position: absolute;
+  right: 4px;
+  bottom: 22px;
+  display: flex;
+  gap: 4px;
+}
+
+.thumb-actions button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(11 14 19 / 85%);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  background: rgb(0 0 0 / 45%);
+}
+
+.help-body {
+  padding: 12px 14px 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.help-body p {
+  margin: 0 0 10px;
+}
+
+.help-body .muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.help-body a {
+  color: var(--accent);
+}
+
+kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: #232b37;
+  font: inherit;
+  font-size: 11px;
+}
+
+/* ---------------------------------------------------------------- toasts */
+
+.toasts {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.toast {
+  max-width: min(90vw, 420px);
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgb(21 26 34 / 96%);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+}
+
+.toast.is-error {
+  border-color: var(--danger);
+  color: #ffd9d9;
+}
+
+.toast.is-ok {
+  border-color: var(--accent-2);
+}
+
+.noscript {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding: 24px;
+  background: var(--bg);
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------- wide screens */
+
+/*
+ * From 900 px wide, or on a phone in landscape (short and wide), switch to the
+ * desktop shape: image on the left filling the space, controls in a column on the
+ * right that scrolls on its own. The image stays visible the whole time - which is
+ * the entire point.
+ */
+@media (width >= 900px), (height <= 520px) and (width >= 560px) {
+  .shell {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+
+  .topbar {
+    grid-column: 1 / -1;
+  }
+
+  .stage {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .controls {
+    grid-column: 2;
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .panel-ptz {
+    order: 1;
+  }
+
+  .panel-focus {
+    order: 2;
+  }
+
+  .panel-capture {
+    order: 3;
+  }
+
+  .drawer {
+    inset: 0 0 0 auto;
+    width: min(420px, 90vw);
+    max-height: none;
+    border-radius: 18px 0 0 18px;
+    padding-bottom: 0;
+  }
+
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

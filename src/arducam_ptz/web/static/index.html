@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Mobile viewport notes (this is where the old page failed):
+      * width=device-width + initial-scale=1 is all that is needed. We do NOT lock
+        maximum-scale: pinch-zooming the *page* is the browser's job, and blocking it
+        breaks accessibility. Zooming that used to happen accidentally while dragging
+        the camera pad is prevented properly, with `touch-action: none` on the pad and
+        `user-select: none` on controls - not by disabling zoom globally.
+      * viewport-fit=cover + env(safe-area-inset-*) so the controls clear the iPhone
+        home indicator and notch.
+      * No <meta name="apple-mobile-web-app-capable"> tricks other than standalone
+        display, so "Add to Home Screen" gives a full-screen app.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0e13" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="Live view and control for the Arducam pan-tilt rig" />
+    <title>arducam-ptz</title>
+
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="stylesheet" href="app.css" />
+  </head>
+
+  <body>
+    <!--
+      The app shell is a fixed, non-scrolling layout: the viewport always shows the
+      camera image AND the controls. That was the central complaint about the old
+      page - controls lived in a long scrolling column, so you either saw the image
+      or the controls, never both.
+    -->
+    <div class="shell">
+      <header class="topbar">
+        <span class="dot" id="conn-dot" role="img" aria-label="Connection status"></span>
+        <strong class="brand">arducam-ptz</strong>
+        <span class="topbar-meta" id="stream-meta">connecting…</span>
+        <button class="icon-btn" id="btn-fullscreen" title="Full screen" aria-label="Full screen">⛶</button>
+        <button class="icon-btn" id="btn-help" title="Keyboard shortcuts and help" aria-label="Help">?</button>
+      </header>
+
+      <main class="stage">
+        <!--
+          The <img> streams multipart/x-mixed-replace MJPEG straight from the server.
+          Chosen over a canvas/JS decoder because it is one HTTP connection, it works
+          in every browser including iOS Safari, and it draws nothing on the JS main
+          thread - so a busy UI can never make the video stutter.
+        -->
+        <img
+          id="stream"
+          class="stream"
+          alt="Live view from the camera"
+          draggable="false"
+          decoding="async"
+        />
+        <div class="stream-overlay" id="stream-overlay" hidden>
+          <p id="stream-overlay-text">stream unavailable</p>
+          <button class="ghost-btn" id="btn-reconnect">Reconnect</button>
+        </div>
+
+        <!-- Tap-to-focus marker: a rectangle in viewport-relative coordinates. -->
+        <div class="af-marker" id="af-marker" hidden aria-hidden="true"></div>
+
+        <div class="hud" id="hud"></div>
+      </main>
+
+      <section class="controls" aria-label="Camera controls">
+        <!-- Pan / tilt -->
+        <div class="panel panel-ptz">
+          <div class="panel-head">
+            <h2>Move</h2>
+            <span class="readout" id="ptz-readout">—</span>
+          </div>
+          <!--
+            role="application" on the pad: arrow keys are handled by our own JS, so
+            screen readers should pass them through instead of using them to browse.
+            touch-action:none is what stops the page zooming/selecting while dragging.
+          -->
+          <div
+            class="pad"
+            id="pad"
+            role="application"
+            tabindex="0"
+            aria-label="Pan and tilt pad. Drag or use arrow keys to aim the camera."
+          >
+            <div class="pad-ring" aria-hidden="true"></div>
+            <span class="pad-hint pad-hint-up" aria-hidden="true">▲</span>
+            <span class="pad-hint pad-hint-down" aria-hidden="true">▼</span>
+            <span class="pad-hint pad-hint-left" aria-hidden="true">◀</span>
+            <span class="pad-hint pad-hint-right" aria-hidden="true">▶</span>
+            <div class="pad-knob" id="pad-knob" aria-hidden="true"></div>
+          </div>
+          <div class="row">
+            <button class="btn" id="btn-center">Centre</button>
+            <button class="btn" id="btn-release" title="Cut servo pulses so the camera goes limp (keyboard: E - use this if the rig ever shakes)">
+              Release
+            </button>
+          </div>
+        </div>
+
+        <!-- Focus -->
+        <div class="panel panel-focus">
+          <div class="panel-head">
+            <h2>Focus</h2>
+            <span class="readout" id="focus-readout">—</span>
+          </div>
+          <input
+            type="range"
+            id="focus-slider"
+            class="slider"
+            min="0"
+            max="4095"
+            value="2048"
+            step="1"
+            aria-label="Focus position"
+          />
+          <div class="row">
+            <button class="btn" id="focus-near" aria-label="Focus nearer">◀ near</button>
+            <button class="btn btn-accent" id="btn-af" title="Autofocus on the selected area">AF</button>
+            <button class="btn" id="focus-far" aria-label="Focus further">far ▶</button>
+          </div>
+          <div class="progress" id="af-progress" hidden>
+            <div class="progress-bar" id="af-progress-bar"></div>
+            <span class="progress-label" id="af-progress-label"></span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="tap-af" checked />
+            <span>Tap the image to autofocus there</span>
+          </label>
+        </div>
+
+        <!-- Capture -->
+        <div class="panel panel-capture">
+          <button class="shutter" id="btn-shutter" aria-label="Take a photo"></button>
+          <button class="btn" id="btn-gallery">Photos <span class="count" id="photo-count">0</span></button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Gallery: a drawer, not a separate page, so the live view keeps running. -->
+    <aside class="drawer" id="gallery" hidden aria-label="Captured photos">
+      <div class="drawer-head">
+        <h2>Photos</h2>
+        <button class="icon-btn" id="btn-gallery-close" aria-label="Close photos">✕</button>
+      </div>
+      <div class="grid" id="gallery-grid"></div>
+    </aside>
+    <div class="scrim" id="scrim" hidden></div>
+
+    <!-- Help / shortcuts -->
+    <aside class="drawer drawer-help" id="help" hidden aria-label="Help">
+      <div class="drawer-head">
+        <h2>How to use this</h2>
+        <button class="icon-btn" id="btn-help-close" aria-label="Close help">✕</button>
+      </div>
+      <div class="help-body">
+        <p><strong>Move the camera</strong> with the pad: drag the knob, or press the arrow
+          keys after clicking the pad. The further you drag, the faster it moves.</p>
+        <p><strong>Focus</strong> with the slider or the near/far buttons, or press
+          <kbd>AF</kbd> to run an autofocus sweep. With "tap the image" enabled, a tap
+          sets the area to focus on - the marker shows where.</p>
+        <p><strong>Shortcuts:</strong> <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> move,
+          <kbd>-</kbd>/<kbd>+</kbd> focus, <kbd>f</kbd> autofocus, <kbd>space</kbd> capture,
+          <kbd>c</kbd> centre, <kbd>g</kbd> photos, <kbd>?</kbd> this panel,
+<kbd>E</kbd> emergency stop (cuts servo power).</p>
+        <p class="muted">
+          The image is a live MJPEG stream from the server. Everything you see here talks
+          to the same HTTP API a script or another app would use - see
+          <a href="docs/">/docs</a> for the OpenAPI UI by hand, or
+          <a href="api/version">/api/version</a> for a version check.
+        </p>
+      </div>
+    </aside>
+
+    <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+    <noscript>
+      <div class="noscript">This interface needs JavaScript. The API beneath it does not:
+        try <code>GET /api/v1/state</code>.</div>
+    </noscript>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
