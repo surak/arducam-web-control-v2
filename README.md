@@ -33,8 +33,11 @@ welded to that one HTML page. This one separates the two:
 ## What it gives you
 
 * **Camera image and movement controls on screen at the same time**, on a phone and on
-  a desktop. A translucent joystick sits *on* the video, so you aim while you watch;
-  everything else lives below it and never covers the picture.
+  a desktop. The layout is a single-viewport grid: the picture keeps the top of the
+  screen, the controls get the space under it, and neither ever pushes the other off
+  screen or under a scroll. The pad uses pointer events with `touch-action: none`, so
+  dragging it never scrolls the page, zooms the text or selects the readout - the three
+  things the old page did instead of moving the camera.
 * **Focus without giving up the picture**: manual focus position, nudge buttons and a
   contrast-detect autofocus sweep that runs in the background (HTTP `202` + polling)
   while the preview keeps streaming.
@@ -85,7 +88,8 @@ uv run arducam-server --reload --simulate   # develop the UI with no hardware
 * Autofocus is *contrast-detect* (sharpness sweep over `focus_absolute`) because the
   IMX519 tuning file in this libcamera build ships no autofocus algorithm - the same
   limitation the old app hit; see `docs/HARDWARE.md`.
-* The API has no authentication. Keep it on a trusted network or put it behind a tunnel
-  that authenticates; see `docs/ARCHITECTURE.md` ("Exposing it to the internet").
+* Authentication is a single optional shared token (`server.token`), off by default -
+  enough to keep the camera closed on a LAN, not a user system. Keep it on a trusted
+  network or behind a TLS reverse proxy otherwise; see `docs/API.md` ("Authentication").
 * Photo capture briefly switches sensor mode, so the preview freezes for roughly
   0.5 s per shot (measured).
