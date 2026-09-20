@@ -70,11 +70,13 @@ def main() -> int:
             channels.append((channel, full_off, on_l, on_h, off_l, off_h))
 
     # 119 is the value this rig is known to be quiet and accurate at: it is what the
-    # original app produced for a 60 Hz request once the board's oscillator correction
-    # (0.8449) is applied. Any other number here means someone changed the frequency or
-    # the correction, and the servos will hum, jitter or run hot - so say so loudly
-    # rather than quoting a frequency, since the correction makes the true period of
-    # this board different from the nominal 25 MHz the datasheet arithmetic assumes.
+    # original app produced for a 60 Hz request once its inherited correction factor
+    # (0.8449, provenance unknown - see docs/HARDWARE.md) is applied. That constant is
+    # not a measurement of this board, so treat 119 as "the usual": any other value means
+    # someone changed the frequency (or the correction), and the servos will hum, jitter
+    # or run hot. Say so loudly rather than quoting a frequency, since the correction
+    # makes this board's true period differ from the nominal 25 MHz the datasheet
+    # arithmetic assumes.
     known_good = prescale == 119
 
     print(f"PCA9685 at 0x{args.address:02x} on i2c-{args.bus}")

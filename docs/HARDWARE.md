@@ -123,13 +123,26 @@ Order matters: cut the pulses first, then investigate.
 | --- | --- | --- |
 | 1 | press **E** in the web UI | `POST /api/v1/ptz/release` — both axes limp, one keystroke |
 | 1 | `uv run arducam release` | the same thing from a shell |
+| 1 | `uv run python scripts/limp.py` | cuts the pulses **with no server involved** — the one to use when the server is already dead or will not start |
 | 2 | `uv run python scripts/check_servos.py` | reads the chip directly; prints `RESULT: LIMP` or `RESULT: ARMED` and the prescale |
 | 3 | `uv run arducam status` | what the service *thinks*: angles, `released`, health of each component |
 
 **Killing the server does not release the servos.** The PCA9685 keeps emitting whatever
 was last programmed into it, so a killed server leaves an armed rig holding position (and
-humming). Always `arducam release` before stopping the server, or let it shut down
-normally — the shutdown path releases the axes.
+humming). Release before stopping the server, or let it shut down normally — the shutdown
+path releases the axes.
+
+Note which of those need a live server: `arducam release` is an HTTP client, so it cannot
+help in the case that matters most — a server that has crashed, been `kill -9`ed, or died
+with its SSH session. The chip is still driving the motors at that point, and
+`scripts/limp.py` writes the registers over I2C directly, so it works with nothing else
+running.
+
+Seen on this rig: a `POST /api/v1/ptz/center` armed both axes at 1500 µs (centre), and the
+pulse was still there after both server processes had exited — identical sample after
+identical sample, holding and humming with no process on the machine owning it. "It is
+still shaking and nothing is running" is normally this: confirm with `check_servos.py`,
+then cut it with `limp.py`.
 
 ## Environment conflicts seen on this machine
 
