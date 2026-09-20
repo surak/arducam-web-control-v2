@@ -11,7 +11,9 @@ Startup and shutdown are deliberately forgiving:
   can say "no camera" instead of showing a connection error. The old app refused to
   start without hardware, which meant you could not even see *why* it was unhappy;
 * shutdown always tries to release the servos, because a servo left holding torque is
-  a hot, buzzing servo.
+  a hot, buzzing servo;
+* the UI is served for revalidation, never for blind reuse, so an upgrade reaches the
+  browser on the next reload instead of whenever the browser decides to ask.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +35,12 @@ from arducam_ptz.api.routes import captures, focus, ptz, stream
 from arducam_ptz.api.routes import status as status_routes
 from arducam_ptz.config import Settings
 from arducam_ptz.services.context import AppContext
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from os import PathLike, stat_result
+
+    from starlette.responses import Response
+    from starlette.types import Scope
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +131,31 @@ def create_app(settings: Settings, context: AppContext | None = None) -> FastAPI
     return app
 
 
+class _RevalidatingStaticFiles(StaticFiles):
+    """Static files a browser must re-check before reusing.
+
+    Starlette serves with ETag and Last-Modified but no ``Cache-Control``, which leaves
+    browsers on *heuristic* freshness: they keep the copy they already have and never
+    ask. That is how a fixed tap-to-focus stayed broken inside the very browser that
+    reported it - the server was handing out the corrected app.js the whole time.
+
+    ``no-cache`` means "revalidate before use", not "do not store". The ETag turns that
+    check into a 304 with no body, so the cost is one small round trip on the LAN, and a
+    deploy becomes visible on the next reload rather than at some browser-chosen moment.
+    """
+
+    def file_response(
+        self,
+        full_path: str | PathLike[str],
+        stat_result: stat_result,
+        scope: Scope,
+        status_code: int = 200,
+    ) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def _mount_web_ui(app: FastAPI, settings: Settings) -> None:
     """Serve the static UI at ``/`` when it exists and is enabled."""
     if not settings.server.web_ui:
@@ -132,7 +166,7 @@ def _mount_web_ui(app: FastAPI, settings: Settings) -> None:
         return
 
     # Mounted last so /api/v1/* routes always win. html=True makes / serve index.html.
-    app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
+    app.mount("/", _RevalidatingStaticFiles(directory=WEB_DIR, html=True), name="web")
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> JSONResponse:  # pragma: no cover - cosmetic

@@ -194,6 +194,40 @@ class TestFocusEndpoints:
         # The sweep must leave the motor at the position it reports as best.
         assert running_client.get(f"{PREFIX}/focus").json()["position"] == result["position"]
 
+    def test_tap_to_focus_region_is_accepted_in_the_shape_the_ui_sends(
+        self, running_client: TestClient
+    ) -> None:
+        """The payload the web UI posts when you tap the image must validate.
+
+        `regionFromTap()` in app.js builds this object and sends it verbatim, so its
+        field names are part of the API contract. They drifted once - the UI sent
+        {x, y, w, h} while `Region` wants width/height - and a tap came back as a 422
+        that the page rendered as raw JSON. Pinned here so the contract is tested from
+        the Python side too, not only by the browser probe.
+        """
+        region = {"x": 0.4, "y": 0.4, "width": 0.2, "height": 0.2}
+        started = running_client.post(f"{PREFIX}/focus/autofocus", json={"region": region})
+        assert started.status_code == 202, started.text
+
+        polled = _poll_until_done(running_client, started.json()["id"])
+        assert polled["status"] == "completed", polled.get("error")
+        # The sweep must report which window it scored, otherwise a caller cannot tell
+        # an ignored region from an honoured one.
+        assert polled["result"]["region"] == region
+
+    def test_short_region_field_names_are_rejected(self, client: TestClient) -> None:
+        """`w`/`h` must fail loudly rather than being quietly ignored.
+
+        If the model silently accepted unknown keys, a region would lose its size and
+        tap-to-focus would quietly focus the whole frame instead of the tapped spot -
+        the same user-visible bug, minus the error message that exposes it.
+        """
+        response = client.post(
+            f"{PREFIX}/focus/autofocus", json={"region": {"x": 0.4, "y": 0.4, "w": 0.2, "h": 0.2}}
+        )
+        assert response.status_code == 422
+        assert "width" in response.text and "height" in response.text
+
     def test_second_sweep_answers_409_with_the_running_job(self, running_client: TestClient) -> None:
         first = running_client.post(f"{PREFIX}/focus/autofocus", json={}).json()
         second = running_client.post(f"{PREFIX}/focus/autofocus", json={})

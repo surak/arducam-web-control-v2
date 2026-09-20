@@ -68,6 +68,24 @@ class TestAssetsAreServed:
         assert response.status_code == 200, path
         assert response.headers["content-type"].startswith(prefix), path
 
+    def test_assets_are_revalidated_instead_of_reused(self, client: TestClient) -> None:
+        """An upgrade must reach the browser on the next reload.
+
+        Reported bug: tap-to-focus was fixed server-side and the page kept running the
+        old app.js, because StaticFiles sends no Cache-Control and browsers then apply
+        heuristic freshness. `no-cache` forbids reuse without asking; the ETag keeps the
+        asking cheap (304, no body).
+        """
+        for path in ("/", "/app.css", "/js/app.js"):
+            response = client.get(path)
+            assert response.status_code == 200, path
+            assert "no-cache" in response.headers.get("cache-control", ""), path
+
+        first = client.get("/js/app.js")
+        again = client.get("/js/app.js", headers={"If-None-Match": first.headers["etag"]})
+        assert again.status_code == 304, "revalidation must not resend the file"
+        assert again.content == b""
+
     def test_the_api_is_not_shadowed_by_the_static_mount(self, client: TestClient) -> None:
         """The UI is mounted at "/", so every API route must still win."""
         assert client.get("/api/v1/health").status_code == 200

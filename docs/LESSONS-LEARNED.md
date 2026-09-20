@@ -148,3 +148,40 @@ nothing scrolls off. The pad is pointer-event driven with `touch-action: none` a
 
 **Verify.** `scripts/ui_probe.py 8099 390 844 mobile` reports `controlsOffscreen: []`,
 `scrollW == viewport.w`, and `padTouchAction: "none"`.
+
+## 11. JSON field names are a contract, and a 422 is not a network fault
+
+**Evidence.** Tapping the image to focus failed with a square at the bottom of the page
+saying `http_error` and something about a missing required input. The page sent
+`{x, y, w, h}`; `models.Region` wants `width`/`height`. FastAPI rejected every tap with a
+422 and the client rendered that rejection as the raw response body, so the visible message
+named no field and looked like a transport problem.
+
+**This code.** The page builds the API's field names, with a comment at both places that
+touch them saying why. `api.js` reads FastAPI's validation payload (a list under `detail`,
+not the `{error: {code, detail}}` envelope this API uses for its own errors) and renders it
+as `region.width: Field required`. `tests/test_api.py` posts the page's exact payload and
+rejects `w`/`h` explicitly, and `scripts/ui_probe.py` taps the image and then checks the
+server for a running sweep.
+
+**Verify.** `uv run pytest tests/test_api.py -k region`; and against a simulated server,
+`uv run python scripts/ui_probe.py 8099 1280 900`, which reports
+`tap_to_focus: {"toast": null, "markerShown": true}` plus a job in `tap_to_focus_job`. A UI
+check that never clicks the thing that is broken cannot catch its bug: the probe covered
+the help drawer, the arrow keys and the `E` key, and never once tapped the image.
+
+## 12. A fix the browser never fetches is not a fix
+
+**Evidence.** Tap-to-focus was corrected on disk and verified over HTTP — the served
+`app.js` contained the new field names — and the browser kept failing, because the response
+carried no `Cache-Control`. Browsers then apply heuristic freshness and reuse the copy they
+already have without asking, so an upgrade reaches users whenever the browser decides to
+look.
+
+**This code.** `_RevalidatingStaticFiles` serves the UI with `Cache-Control: no-cache`,
+which means "revalidate before use", not "do not store": the ETag turns the check into a
+304 with no body, so the cost is one small request on the LAN and a deploy lands on the next
+reload.
+
+**Verify.** `curl -sI http://<pi>:8080/js/app.js | grep -i cache-control` shows `no-cache`,
+and re-requesting with the old ETag answers 304. `tests/test_web.py` pins both.

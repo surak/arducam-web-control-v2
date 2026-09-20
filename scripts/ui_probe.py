@@ -256,6 +256,39 @@ async def main() -> int:
                 await_promise=True,
             )
 
+            # --- tap the image to autofocus.
+            # This is the path that shipped broken: the UI sent {x, y, w, h} while the
+            # API's Region wants width/height, so every tap produced a 422 that the page
+            # showed as raw JSON. The probe taps for real and then asks the server
+            # whether a sweep actually ran, so field-name drift fails the run instead of
+            # only being visible to whoever happened to click.
+            if not await browser.eval("document.getElementById('tap-af').checked"):
+                await browser.click("#tap-af")
+            tap_at = await browser.eval(
+                "(() => { const r = document.getElementById('stream').getBoundingClientRect();"
+                " return {x: r.x + r.width / 2, y: r.y + r.height / 2}; })()"
+            )
+            for kind in ("mousePressed", "mouseReleased"):
+                await browser.send(
+                    "Input.dispatchMouseEvent",
+                    type=kind,
+                    x=tap_at["x"],
+                    y=tap_at["y"],
+                    button="left",
+                    clickCount=1,
+                )
+            await asyncio.sleep(3.0)
+            out["tap_to_focus"] = await browser.eval(
+                "(() => { const t = document.querySelector('#toasts .toast');"
+                " return {toast: t ? t.textContent : null,"
+                " toastKind: t ? t.className : null,"
+                " markerShown: !document.getElementById('af-marker').hidden}; })()"
+            )
+            out["tap_to_focus_job"] = await browser.eval(
+                "fetch('/api/v1/state').then(r => r.json()).then(s => s.focus.autofocus)",
+                await_promise=True,
+            )
+
             if keep:
                 # Name it after the viewport so a mobile and a desktop run can coexist.
                 shot = Path(f"ui_shot_{width}x{height}.png").resolve()

@@ -57,6 +57,25 @@ export function withToken(url) {
   return u.pathname + u.search + u.hash;
 }
 
+/**
+ * Turn FastAPI's validation payload into something a human can act on.
+ *
+ * `{"detail": [{"loc": ["body", "region", "width"], "msg": "Field required"}]}` becomes
+ * "region.width: Field required". Returns null when the payload is not that shape, so
+ * the caller can fall back to the raw body.
+ */
+function describeValidation(payload) {
+  const items = payload && Array.isArray(payload.detail) ? payload.detail : null;
+  if (!items || items.length === 0) return null;
+  return items
+    .map((item) => {
+      const where = Array.isArray(item.loc) ? item.loc.filter((part) => part !== "body").join(".") : "";
+      const what = item.msg || item.type || "invalid";
+      return where ? `${where}: ${what}` : what;
+    })
+    .join("; ");
+}
+
 async function request(path, { method = "GET", body, timeoutMs = 15000, signal } = {}) {
   const headers = {};
   if (token) headers["X-API-Token"] = token;
@@ -92,7 +111,13 @@ async function request(path, { method = "GET", body, timeoutMs = 15000, signal }
 
   if (!response.ok) {
     const error = (payload && payload.error) || {};
-    throw new ApiError(response.status, error.code || "http_error", error.detail || text.slice(0, 200), payload);
+    // Everything this API raises itself arrives as {"error": {code, detail}}. A
+    // *validation* failure, however, is FastAPI's own shape: {"detail": [ {loc, msg} ]}
+    // - a list. Falling through to `text.slice()` for that is how a field-name typo
+    // reached the user as the raw JSON blob "missing field required input" instead of a
+    // sentence naming the field.
+    const detail = error.detail || describeValidation(payload) || text.slice(0, 200);
+    throw new ApiError(response.status, error.code || "http_error", detail, payload);
   }
   return payload;
 }

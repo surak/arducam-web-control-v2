@@ -42,6 +42,19 @@ scroll or zoom the page on a phone.
 | Escape | close whatever drawer is open |
 | tap the image | move the autofocus window there, when the AF toggle is on |
 
+A tap posts a normalised window to `/api/v1/focus/autofocus`. The object built by
+`regionFromTap()` is sent verbatim, so **its field names are the API's**:
+`{x, y, width, height}`, exactly `models.Region`. A shorter local spelling (`w`/`h`) is not
+a harmless shorthand — the request fails validation and the sweep never starts, so the tap
+appears to do nothing but flash an error. Two guards now exist: `tests/test_api.py` posts
+the shape the page builds, and `scripts/ui_probe.py` taps the image for real and then asks
+the server whether a sweep ran.
+
+Validation errors read differently from the API's own errors, too: FastAPI reports them as
+a list under `detail`, not this project's `error` envelope. `api.js` formats that list into
+`region.width: Field required`; without it the page shows the raw JSON body, which is how a
+field-name typo comes to look like a network fault.
+
 Arrow keys also work while a button has focus (after clicking *help*, holding an arrow
 should still steer). Only the space bar defers to a focused button, because that is how
 buttons are pressed from a keyboard — and the handler ignores everything while a text

@@ -70,7 +70,10 @@ const state = {
   stream: null,
   ptz: { pan: null, tilt: null, clamps: [] },
   focus: { position: null, min: 0, max: 4095, limits_known: false },
-  region: null, // normalised {x, y, w, h} of the area to autofocus on
+  // Normalised {x, y, width, height} of the area to autofocus on. The field names are
+  // the API's (models.Region) on purpose: they travel to the server verbatim, and a
+  // short local spelling here is exactly how tap-to-focus came back as a 422.
+  region: null,
   afJob: null,
   photos: 0,
 };
@@ -463,8 +466,8 @@ function drawMarker() {
   const stage = el.stream.parentElement.getBoundingClientRect();
   el.marker.style.left = `${content.left - stage.left + state.region.x * content.width}px`;
   el.marker.style.top = `${content.top - stage.top + state.region.y * content.height}px`;
-  el.marker.style.width = `${state.region.w * content.width}px`;
-  el.marker.style.height = `${state.region.h * content.height}px`;
+  el.marker.style.width = `${state.region.width * content.width}px`;
+  el.marker.style.height = `${state.region.height * content.height}px`;
   el.marker.hidden = false;
 }
 
@@ -473,13 +476,14 @@ function regionFromTap(clientX, clientY, size = 0.3) {
   const x = Math.min(1, Math.max(0, (clientX - content.left) / content.width));
   const y = Math.min(1, Math.max(0, (clientY - content.top) / content.height));
   const half = size / 2;
-  const w = Math.min(size, 1);
-  const h = Math.min(size, 1);
+  const width = Math.min(size, 1);
+  const height = Math.min(size, 1);
+  // Field names match models.Region exactly: this object is POSTed as-is.
   return {
-    x: Math.min(1 - w, Math.max(0, x - half)),
-    y: Math.min(1 - h, Math.max(0, y - half)),
-    w,
-    h,
+    x: Math.min(1 - width, Math.max(0, x - half)),
+    y: Math.min(1 - height, Math.max(0, y - half)),
+    width,
+    height,
   };
 }
 
