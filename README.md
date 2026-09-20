@@ -97,15 +97,31 @@ uv run arducam serve --simulate --port 8099                # run a server with f
 uv run arducam --json status | jq '.ptz.pan.angle'
 ```
 
+### If it ever starts shaking
+
+The rig comes up **limp** and is given pulses only when something asks it to move, so a
+restart cannot set it going by itself. If it does move on its own, cut the pulses first
+and investigate afterwards:
+
+```bash
+uv run arducam release                    # cut both servo pulses: the axes go limp
+uv run python scripts/check_servos.py     # read the chip directly: LIMP or ARMED, + prescale
+```
+
+Pressing **E** in the web page does the same thing from the keyboard. Note that killing
+the server does *not* release the servos - the PCA9685 keeps emitting whatever it was last
+programmed with, so `release` (or a normal shutdown, which releases) comes first. The
+background is in `docs/HARDWARE.md`.
+
 ## Documentation
 
 | document | what is in it |
 | --- | --- |
-| `docs/ARCHITECTURE.md` | layers, threading model, why each decision was made |
 | `docs/API.md` | every endpoint with curl examples |
 | `docs/CONFIGURATION.md` | all config keys, environment overrides |
-| `docs/HARDWARE.md` | wiring, pin/channel map, measured camera performance |
-| `docs/LESSONS-LEARNED.md` | every concrete bug/design fault of the old app and how this one avoids it |
+| `docs/HARDWARE.md` | wiring, the PWM clock, the start-up and streaming rules that keep the servos quiet, panic procedure |
+| `docs/UI.md` | the browser UI: files, interaction model, direction conventions, the CSS traps, how to verify it in a real browser |
+| `docs/LESSONS-LEARNED.md` | concrete faults of the old app - and of this one, found by testing it - and what the code does instead |
 
 ## Development
 
@@ -114,6 +130,12 @@ uv run pytest                     # fast: simulated hardware, no camera needed
 uv run pytest -m hardware         # talks to the real camera/motor/servos
 uv run ruff check .
 uv run arducam-server --reload --simulate   # develop the UI with no hardware
+
+# The UI, in a real browser (layout, keys, drawers, does the image actually render).
+# Point it at a --simulate server: the page is backend-agnostic, so a UI regression can
+# never move the camera. See docs/UI.md for what a passing run looks like.
+uv run --with websockets python scripts/ui_probe.py 8099 390 844 mobile
+uv run --with websockets python scripts/ui_probe.py 8099 1440 900 desktop
 ```
 
 ## Status / known limits
