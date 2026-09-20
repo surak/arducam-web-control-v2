@@ -68,12 +68,23 @@ class _HubOutput(Output if Output is not None else object):  # type: ignore[misc
         *extra: Any,
         **kwargs: Any,
     ) -> None:
+        # Signature is tolerant on purpose: different picamera2 versions call an
+        # output object with (frame), (frame, keyframe, timestamp) or
+        # (array, config, timestamps, file, fname, camera). *extra/**kwargs absorb the
+        # difference instead of pinning one version. Unused args of a third-party
+        # callback are expected here, hence the ARG002 exemption for this file.
+        #
+        # The published timestamp is the *arrival* time from time.monotonic(), not the
+        # sensor timestamp passed in: the sweep compares frame times against local
+        # clock readings ("did this frame arrive after the lens moved?"), and sensor
+        # timestamps are in a different domain entirely.
+        del keyframe, timestamp  # accepted for compatibility with picamera2
         try:
             self.sink.publish(
                 bytes(frame),
                 width=self.width,
                 height=self.height,
-                timestamp=timestamp if timestamp else time.monotonic(),
+                timestamp=time.monotonic(),
             )
         except Exception:  # pragma: no cover - never let a client error kill the encoder thread
             self.log.exception("frame sink rejected a frame")

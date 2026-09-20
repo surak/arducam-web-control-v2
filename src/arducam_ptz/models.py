@@ -22,7 +22,7 @@ from __future__ import annotations
 import time
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -218,8 +218,24 @@ class JobState(ApiModel):
     created_at: float
     updated_at: float
     poll_url: str = Field(description="Where to poll. Convention: /api/v1/.../<id>.")
-    result: AutofocusResult | None = None
+    result: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Job-specific payload, free-form so that adding a job kind does not "
+            "change this contract. For kind='autofocus' it is an AutofocusResult."
+        ),
+    )
     error: str | None = None
+
+    def autofocus_result(self) -> AutofocusResult | None:
+        """Typed view of the payload for an autofocus job, or None if there is none.
+
+        The wire stays generic; clients that know what they asked for get the
+        parsed object without re-implementing the schema.
+        """
+        if self.kind != "autofocus" or self.result is None:
+            return None
+        return AutofocusResult.model_validate(self.result)
 
     def is_fresh(self, ttl_s: float, now: float | None = None) -> bool:
         """True while the job is worth keeping in the registry."""

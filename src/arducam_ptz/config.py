@@ -62,11 +62,27 @@ def resolve_config_path(explicit: Path | None = None) -> Path | None:
 
 
 class ServerSettings(BaseModel):
-    """HTTP listener."""
+    """HTTP listener and access control."""
 
     host: str = "0.0.0.0"
     port: int = Field(default=8080, ge=1, le=65535)
     log_level: Literal["debug", "info", "warning", "error"] = "info"
+    #: Shared secret. None = open (the default: this is a LAN camera, and the web UI
+    #: loads the MJPEG stream from an <img> tag, which cannot send headers - a
+    #: mandatory token would have to travel in the URL anyway). Set it when the
+    #: camera is reachable from an untrusted network; the CLI sends it as
+    #: X-API-Token, and stream endpoints additionally accept ?token=.
+    token: str | None = None
+    #: Extra origins allowed to call the API from a browser. Empty = same-origin
+    #: only, which is what the bundled UI uses. A future iPhone app does not need
+    #: this (it is not a browser); add origins only for a separate web front-end.
+    cors_origins: list[str] = Field(default_factory=list)
+    #: Serve the bundled web UI at /. Turn off when this process is only a backend.
+    web_ui: bool = True
+    #: Seconds a client may hold the MJPEG stream open without reading before it is
+    #: considered gone. Guards against half-dead TCP connections on mobile networks,
+    #: which - in the old app - kept a slot busy forever.
+    stream_idle_timeout_s: float = Field(default=15.0, ge=1.0, le=120.0)
 
 
 class CameraSettings(BaseModel):
@@ -162,6 +178,12 @@ class FocusSettings(BaseModel):
     settle_ms: int = Field(default=140, ge=0, le=2000)
     #: How long to wait for the next preview frame while sampling a position.
     sample_timeout_ms: int = Field(default=1500, ge=100, le=10000)
+    #: Frames to discard after moving the lens before scoring one. A frame can be
+    #: published immediately after a move while still holding pre-move pixels (it was
+    #: already in the encoder), so at least one frame must be dropped. Raise this if
+    #: a sweep ever lands one coarse step off; 0 is only sensible in simulations with
+    #: a hand-synchronised frame source.
+    pipeline_skip_frames: int = Field(default=1, ge=0, le=10)
     #: Coarse sweep samples across the whole travel, then fine samples inside the
     #: winning coarse interval (the old app's sweep shape, kept: it worked).
     coarse_steps: int = Field(default=9, ge=3, le=64)
@@ -228,6 +250,14 @@ class Settings(BaseSettings):
             sources.append(TomlConfigSettingsSource(settings_cls, toml_file=path))
         sources.append(file_secret_settings)
         return tuple(sources)
+
+    def with_server(self, **overrides: object) -> Settings:
+        """Return a copy with the ``server`` section overridden.
+
+        Used by the CLI/server argument parsing: ``--host``/``--port`` are one-off
+        overrides and must not silently persist into the config file.
+        """
+        return self.model_copy(update={"server": self.server.model_copy(update=overrides)})
 
     def simulate_everything(self) -> bool:
         """True when no real hardware should be touched at all."""
