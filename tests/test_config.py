@@ -73,6 +73,41 @@ def test_a_mirrored_axis_in_a_config_file_reaches_the_servo(tmp_path: Path) -> N
     assert plain_rig.last == (90, 60)
 
 
+def test_a_mirrored_axis_keeps_the_physical_window(tmp_path: Path) -> None:
+    """Inverting an axis must not hand a client the far side of the mechanical stop.
+
+    ``tilt_min``/``tilt_max`` are physical positions, and the clamp runs in logical angles
+    *before* the mirror (services/ptz.py clamps, then ``_raw`` mirrors). A mirrored axis
+    whose window is left alone therefore sends the servo twenty degrees past the bracket as
+    soon as anything asks for the old minimum, and the camera sits there pushing against it.
+    Exchanging the window's ends keeps the physical travel - and the margin at both ends -
+    exactly as it was, which is what the assertions below measure.
+    """
+    config = tmp_path / "arducam.toml"
+    config.write_text("[pan_tilt]\ninvert_tilt = true\ntilt_min = 35.0\ntilt_max = 165.0\n")
+    mirrored = load_settings(config).pan_tilt
+
+    # A client asking for 15 or 170 gets clamped to the mirrored window and then mirrored
+    # back onto the physical positions the old window allowed: 145 and 15.
+    below = SimulatedServoRig(mirrored)
+    PanTiltService(mirrored, below).goto(tilt=15)
+    above = SimulatedServoRig(mirrored)
+    PanTiltService(mirrored, above).goto(tilt=170)
+
+    assert below.last == (90, 145)
+    assert above.last == (90, 15)
+
+    # The mistake this rule prevents, asserted so the reason cannot be lost: same axis,
+    # window left alone, servo commanded to 165 - past the stop at 145.
+    careless = mirrored.model_copy(update={"tilt_min": 15.0, "tilt_max": 145.0})
+    careless_rig = SimulatedServoRig(careless)
+    PanTiltService(careless, careless_rig).goto(tilt=15)
+
+    assert careless_rig.last is not None
+    assert careless_rig.last[1] == 165
+    assert careless_rig.last[1] > 145  # 145 was the stop; 165 is past it
+
+
 def test_example_config_matches_the_schema() -> None:
     """The documented example must only contain keys the code understands."""
     raw = tomllib.loads(EXAMPLE_CONFIG.read_text())

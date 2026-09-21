@@ -55,7 +55,10 @@ pwm_frequency_hz = 60.0
 # Do not carry it to another board without measuring that board first.
 pwm_frequency_correction = 0.8449
 # Mechanical travel limits of this platform. Keep them: the camera hits the
-# bracket outside this window.
+# bracket outside this window. Note that these are *physical* positions and the clamp
+# runs before any mirroring, so an axis you invert above needs its window inverted with
+# it: tilt_min = 180 - old_max, tilt_max = 180 - old_min. Otherwise the old minimum
+# still passes the clamp and drives the servo to the far side of its stop.
 # Mirror an axis for a servo mounted the other way round. Not a preference - watch which
 # way the camera actually moves. This rig's tilt axis is mirrored, in its own deployment
 # config rather than here (docs/HARDWARE.md, "Which way is up"), which is why the shipped

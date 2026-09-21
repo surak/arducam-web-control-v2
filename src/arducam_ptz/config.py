@@ -150,6 +150,13 @@ class PanTiltSettings(BaseModel):
     #: ``invert_tilt = true`` in ~/.config/arducam-ptz/config.toml (docs/HARDWARE.md).
     #: Flipping the sign in a front-end instead would leave the CLI, the web UI and any
     #: other client disagreeing about which way is up.
+    #:
+    #: Mirroring an axis means mirroring the travel window below with it, because those
+    #: limits are *physical* stops and the clamp runs in logical angles before the mirror
+    #: (services/ptz.py). Left alone, a mirrored tilt axis lets a request for the old
+    #: ``tilt_min`` through and commands the servo to the far side of its bracket. Exchange
+    #: the two ends instead - ``tilt_min = 180 - old_max``, ``tilt_max = 180 - old_min`` -
+    #: and the servo's physical travel, and its margin at both ends, is unchanged.
     invert_pan: bool = False
     invert_tilt: bool = False
     #: Refuse single moves larger than this many degrees (0 = no limit). A slider

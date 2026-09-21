@@ -211,3 +211,21 @@ see the bracket. `tests/test_config.py::test_a_mirrored_axis_in_a_config_file_re
 pins the chain from the file to the written pulse (tilt 60 -> 120), and the `settings`
 fixture now pins `ARDUCAM_CONFIG` at an empty file, so the machine's own config cannot
 flatter the suite either.
+
+**Corollary - mirror the window with the axis.** The travel limits are *physical* stops and
+the clamp runs in logical angles before the mirror, so `invert_tilt = true` on its own lets
+a request for the old `tilt_min` through and sends the servo twenty degrees past its bracket,
+where it sits and pushes. Inverting an axis means exchanging the window's ends with it
+(15/145 becomes 35/165), which commands exactly the physical positions the old window did.
+`tests/test_config.py::test_a_mirrored_axis_keeps_the_physical_window` asserts both halves -
+the exchanged window stays inside the old travel, and the careless version goes past it.
+
+**Two deployment traps worth knowing**, both hit while moving this rig to a config file.
+A config in `~/.config/<app>/` moves the *storage* paths with it, because those resolve
+against the loaded file's folder - pin `photos_dir` to an absolute path or the gallery comes
+up empty with the photos still sitting in the checkout. And `pkill -f "arducam serve"` run
+from a shell kills that shell: the pattern is in its own command line. Kill by the PID that
+`ss -ltnp` reports for the port instead. This account also lives on the machine that
+`systemd --user` can supervise the server, which is how it survives the session that started
+it: `systemd-run --user --unit=arducam-ptz-web --collect --working-directory=<repo> --
+<repo>/.venv/bin/arducam serve --port 8080 --log-level info`.

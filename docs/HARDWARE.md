@@ -97,6 +97,14 @@ leaves the camera where it was pointing, with no torque and no motion — verifi
 hardware with `scripts/check_servos.py` immediately after a restart, which reports all 16
 channels off.
 
+Two things about that first command. It writes **both** axes, not only the one you asked
+for (`set_angles` always writes the pair), and until something moves them the targets are
+the configured centres - so the first move after a restart usually re-centres the pan too.
+And after a change to the mirroring or the window, the angles in the state are the
+*logical* ones, so the camera lands at the mirrored physical position on that first
+command. That is what inverting an axis means, and it stays inside the mechanical window
+as long as the window was mirrored with the axis (next section but one).
+
 ## The 5 ms gap: the camera and the servos share this Pi
 
 The original project traced "servos thrash *while using the app*" — not on start-up, but
@@ -145,6 +153,29 @@ Verify two things. The flag is being read:
 and the mount is as described, which only your eyes can settle: press `ArrowUp` and watch
 the camera. `tests/test_config.py` pins the chain from file to written pulse, so a flag
 that nothing reads cannot pass unnoticed again.
+
+**Mirror the window with the axis, or you move the stop.** `tilt_min`/`tilt_max` are
+physical positions and the clamp runs in logical angles *before* the mirror
+(`services/ptz.py` clamps, then `_raw` mirrors), so a mirrored axis that keeps the old
+window commands the servo to 165 whenever a client asks for 15 - twenty degrees past the
+bracket, with the servo pushing against it. This rig carries the exchanged window:
+
+```toml
+invert_tilt = true
+tilt_min = 35.0     # 180 - 145
+tilt_max = 165.0    # 180 - 15
+```
+
+which commands exactly the physical positions the old window did: `pulse_us(165)` ==
+`pulse_us(180 - 15)` == 888.9 us and `pulse_us(35)` == `pulse_us(180 - 145)` == 2111.1 us.
+The servo's physical travel, and its margin at both ends, is identical.
+
+You can read the answer off the chip instead of trusting any of this. With the servos armed,
+`scripts/check_servos.py` prints each channel's `LED_OFF` count, and at this rig's 60 Hz one
+count is 4.07 us. A commanded logical tilt of 110 shows up as `OFF=0x013a` - 314 counts,
+1277.7 us, i.e. 69.99 degrees of physical servo angle, which is 180 - 110. The same command
+on an unmirrored axis reads `OFF=0x01a7` (423 counts). Pan, still unmirrored here, reads
+`OFF=0x0171` (369 counts, 1501.5 us, 90.1 degrees).
 
 ## Panic procedure
 
