@@ -28,13 +28,19 @@ from arducam_ptz.config import Settings, load_settings
 def settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Settings:
     """Settings with every backend simulated and all state inside tmp_path.
 
-    The environment is scrubbed of ARDUCAM_* so a developer's shell cannot leak
-    into the test run.
+    The environment is scrubbed of ARDUCAM_* so a developer's shell cannot leak into the
+    test run - and ARDUCAM_CONFIG is then pointed at an empty file inside tmp_path, so the
+    deploy-time config cannot leak in either. Without that, load_settings() falls through
+    to ~/.config/arducam-ptz/config.toml, which on this rig is a real file that mirrors the
+    tilt axis: a suite that inherits it is testing the machine, not the code.
     """
     for name in list(os.environ):
         if name.startswith("ARDUCAM_"):
             monkeypatch.delenv(name, raising=False)
     monkeypatch.chdir(tmp_path)
+    hermetic = tmp_path / "test-config.toml"
+    hermetic.write_text("# Empty on purpose: the defaults, with nothing inherited.\n")
+    monkeypatch.setenv("ARDUCAM_CONFIG", str(hermetic))
     loaded = load_settings()
     return loaded.model_copy(
         update={

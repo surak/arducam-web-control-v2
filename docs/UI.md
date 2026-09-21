@@ -80,6 +80,12 @@ the camera still refuses to go the way you push it. It was caught only by pressi
 against a live page and reading the resulting angle (`tilt_before: 92.2, tilt_after: 90`,
 i.e. up).
 
+The servo mount on this rig is mirrored relative to the reference rig, and that is fixed one
+layer down, in the deployment config (`invert_tilt = true`; docs/HARDWARE.md, "Which way is
+up"). The translation above is unchanged by it, and it must stay the only translation in
+this file: the mirror applies to the CLI and every other client too, which it would not if
+it were done here.
+
 ## The photo gallery and the viewer
 
 `g` (or the Photos button) opens the grid. `loadGallery()` fills it from

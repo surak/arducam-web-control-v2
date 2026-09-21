@@ -20,6 +20,8 @@ from arducam_ptz.config import (
     load_settings,
     resolve_config_path,
 )
+from arducam_ptz.hardware.servo import SimulatedServoRig
+from arducam_ptz.services.ptz import PanTiltService
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_CONFIG = REPO_ROOT / "config" / "arducam.example.toml"
@@ -44,6 +46,33 @@ def _walk_unknown_keys(data: dict, model: type, path: str = "") -> list[str]:
     return unknown
 
 
+def test_a_mirrored_axis_in_a_config_file_reaches_the_servo(tmp_path: Path) -> None:
+    """The mount direction has to travel from the file all the way to the pulses.
+
+    This rig's tilt servo is mounted mirrored, so its deployment config carries
+    ``invert_tilt = true`` (docs/HARDWARE.md, "Which way is up"). A flag that nothing reads
+    - or a service built from a different settings object than the file produced - looks
+    exactly like a working one from the outside: the camera simply drives the wrong way
+    when you press up. Pin the whole chain instead.
+    """
+    config = tmp_path / "arducam.toml"
+    config.write_text("[pan_tilt]\ninvert_tilt = true\n")
+
+    mirrored = load_settings(config)
+    mirrored_rig = SimulatedServoRig(mirrored.pan_tilt)
+    PanTiltService(mirrored.pan_tilt, mirrored_rig).goto(tilt=60)
+
+    plain = load_settings(tmp_path / "absent.toml")
+    plain_rig = SimulatedServoRig(plain.pan_tilt)
+    PanTiltService(plain.pan_tilt, plain_rig).goto(tilt=60)
+
+    assert mirrored.pan_tilt.invert_tilt is True
+    assert plain.pan_tilt.invert_tilt is False
+    # Whole tuples: the mirror touches tilt only. 180 - 60 is the mirrored pulse.
+    assert mirrored_rig.last == (90, 120)
+    assert plain_rig.last == (90, 60)
+
+
 def test_example_config_matches_the_schema() -> None:
     """The documented example must only contain keys the code understands."""
     raw = tomllib.loads(EXAMPLE_CONFIG.read_text())
@@ -63,9 +92,15 @@ def test_defaults_without_any_config_file(tmp_path: Path) -> None:
 
 
 def test_example_config_parses_to_its_own_documented_defaults() -> None:
-    """The example ships with the defaults filled in, so loading it changes nothing."""
+    """The example ships with the defaults filled in, so loading it changes nothing.
+
+    Compared against ``Settings()`` - the model's own defaults - rather than against
+    ``load_settings()`` with no argument. That one resolves the deploy-time config
+    ($ARDUCAM_CONFIG, ./arducam.toml, ~/.config/arducam-ptz/config.toml), and this rig
+    mirrors its tilt axis there, which says nothing about what the example documents.
+    """
     from_example = load_settings(EXAMPLE_CONFIG)
-    plain = load_settings()
+    plain = Settings()
     assert from_example.camera == plain.camera
     assert from_example.pan_tilt == plain.pan_tilt
     assert from_example.focus == plain.focus

@@ -144,6 +144,12 @@ class PanTiltSettings(BaseModel):
     tilt_max: float = Field(default=145.0, ge=0, le=180)
     pan_center: float = Field(default=90.0, ge=0, le=180)
     tilt_center: float = Field(default=90.0, ge=0, le=180)
+    #: Mirror an axis for a servo mounted the other way round. This is a fact about the
+    #: hardware rather than a preference, so it belongs in a config file, where it applies
+    #: to every client at once: this rig's tilt servo is mounted mirrored and carries
+    #: ``invert_tilt = true`` in ~/.config/arducam-ptz/config.toml (docs/HARDWARE.md).
+    #: Flipping the sign in a front-end instead would leave the CLI, the web UI and any
+    #: other client disagreeing about which way is up.
     invert_pan: bool = False
     invert_tilt: bool = False
     #: Refuse single moves larger than this many degrees (0 = no limit). A slider

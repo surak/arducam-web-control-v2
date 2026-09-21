@@ -115,6 +115,37 @@ If the rig ever does shake again, the first thing to check is that the inspected
 matches what the code believes: `scripts/check_servos.py` reads the chip registers
 directly, not through this project's driver.
 
+## Which way is up - the tilt axis is mirrored on this rig
+
+`tilt` increases downwards - the reference rig's convention, kept so this project and the
+app the hardware was calibrated against agree about what "left" and "down" mean. This
+rig's tilt servo is mounted the other way round, so its deployment config mirrors the axis:
+
+```toml
+# ~/.config/arducam-ptz/config.toml
+[pan_tilt]
+invert_tilt = true
+```
+
+Before that flag was set, the pad's up arrow and the `ArrowUp` key drove the camera
+*down*, reported in use as "up and down are swapped, it is confusing like this".
+
+The mirror belongs here, in the angle-to-pulse mapping, and not in the web UI. The UI's
+job is to translate screen-space ("+y is up on the screen") into the angle convention
+above, and it does that in one place (`sendNudge` in `app.js`). Teaching the UI a second
+sign would leave the CLI, the web UI and any other front-end disagreeing about which way
+up is, and would turn the API's angle convention into a per-client opinion instead of a
+device fact.
+
+Verify two things. The flag is being read:
+
+    uv run python -c "from arducam_ptz.config import load_settings; \
+        print(load_settings().pan_tilt.invert_tilt)"
+
+and the mount is as described, which only your eyes can settle: press `ArrowUp` and watch
+the camera. `tests/test_config.py` pins the chain from file to written pulse, so a flag
+that nothing reads cannot pass unnoticed again.
+
 ## Panic procedure
 
 Order matters: cut the pulses first, then investigate.

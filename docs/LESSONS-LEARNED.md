@@ -185,3 +185,29 @@ reload.
 
 **Verify.** `curl -sI http://<pi>:8080/js/app.js | grep -i cache-control` shows `no-cache`,
 and re-requesting with the old ETag answers 304. `tests/test_web.py` pins both.
+
+## 13. A mirrored servo is a hardware fact, not a UI preference
+
+**Evidence.** Up and down were swapped in use: the pad's ▲ and `ArrowUp` drove the camera
+downwards - "invert the up and down camera keys and controls, it is confusing like this".
+The temptation is to flip the sign where it is *seen*, in `sendNudge` in `app.js`, which
+makes the web page feel right after one reload.
+
+**This code.** The mirror goes in the hardware mapping instead: `invert_tilt = true` in the
+deployment config (`~/.config/arducam-ptz/config.toml`), which every client goes through.
+Flipping it in the UI would have created two conventions - the CLI's `--tilt +5`, the API's
+documented "tilt increases downwards", an iPhone client, and the translation table in
+docs/UI.md would each have to agree with a sign that only the web page knew about. The UI
+keeps one job, turning screen-space into angles; the rig keeps the other.
+
+**Verify.** Two levels, because "the camera goes the right way" has two failure modes: a
+flag nothing reads, and a mount that is not what you think it is.
+
+    uv run python -c "from arducam_ptz.config import load_settings; \
+        print(load_settings().pan_tilt.invert_tilt)"     # -> True
+
+then press `ArrowUp` against the running server and watch the camera; no automated check can
+see the bracket. `tests/test_config.py::test_a_mirrored_axis_in_a_config_file_reaches_the_servo`
+pins the chain from the file to the written pulse (tilt 60 -> 120), and the `settings`
+fixture now pins `ARDUCAM_CONFIG` at an empty file, so the machine's own config cannot
+flatter the suite either.
