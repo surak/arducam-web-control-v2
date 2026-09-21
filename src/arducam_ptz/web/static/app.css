@@ -538,19 +538,33 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 8px;
+  /* 150 px minimum, not 96. At 96 a phone tile carried ~117 px of picture, which is why
+     the two action buttons laid over it read as the content of the gallery. */
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
   padding: 12px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
 .thumb {
-  position: relative;
+  /* A <button>, not a <figure>: the whole tile is the tap target, and the keyboard can
+     reach and open it for free. Nothing is laid over the picture any more. */
+  display: block;
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: 10px;
   overflow: hidden;
   background: #0d1219;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: zoom-in;
+}
+
+.thumb:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .thumb img {
@@ -560,7 +574,8 @@ body {
   object-fit: cover;
 }
 
-.thumb figcaption {
+.thumb-meta {
+  display: block;
   padding: 4px 6px;
   color: var(--muted);
   font-size: 10px;
@@ -569,23 +584,67 @@ body {
   text-overflow: ellipsis;
 }
 
-.thumb-actions {
-  position: absolute;
-  right: 4px;
-  bottom: 22px;
+/* ------------------------------------------------------- photo viewer (lightbox) */
+
+/* The picture gets everything between the two bars, and nothing is laid over it: the
+   buttons that used to sit on the tiles live in those bars instead. Before this, a
+   16 MP photo was shown as a ~117 px tile with two 28 px buttons on top of it. */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  background: rgb(4 6 9 / 97%);
 }
 
-.thumb-actions button {
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgb(11 14 19 / 85%);
-  color: var(--text);
-  font-size: 13px;
-  cursor: pointer;
+.viewer-bar,
+.viewer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.viewer-bar {
+  padding-top: calc(8px + env(safe-area-inset-top));
+}
+
+.viewer-foot {
+  /* Three action buttons do not fit beside the metadata on a phone, so let them wrap
+     onto their own line rather than pushing off the edge. */
+  flex-wrap: wrap;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+}
+
+.viewer-name,
+.viewer-meta {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewer-name {
+  flex: 1 1 auto;
+  text-align: center;
+}
+
+.viewer-img {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.viewer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .scrim {
@@ -726,7 +785,11 @@ kbd {
   }
 
   .grid {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    /* Two columns in a ~420 px panel, not three. This override used to shave the base
+       rule's 150 px minimum down to 120, which made tiles *smaller* on a desktop than on
+       a phone: the panel is narrower than a phone is wide, so fewer and larger tiles is
+       the honest layout. */
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   }
 }
 

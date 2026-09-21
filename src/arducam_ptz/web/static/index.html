@@ -150,6 +150,27 @@
     </aside>
     <div class="scrim" id="scrim" hidden></div>
 
+    <!-- Full-size photo viewer. Tapping a tile in the grid opens this: the picture takes
+         the screen between two bars, and download/delete live in the bottom bar instead
+         of on top of a thumbnail barely larger than they are. -->
+    <div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-label="Photo">
+      <div class="viewer-bar">
+        <button class="icon-btn" id="viewer-prev" aria-label="Previous photo">‹</button>
+        <span class="viewer-name" id="viewer-name"></span>
+        <button class="icon-btn" id="viewer-next" aria-label="Next photo">›</button>
+        <button class="icon-btn" id="viewer-close" aria-label="Close photo">✕</button>
+      </div>
+      <img class="viewer-img" id="viewer-img" alt="" />
+      <div class="viewer-foot">
+        <span class="viewer-meta" id="viewer-meta"></span>
+        <div class="viewer-actions">
+          <a class="btn" id="viewer-open" target="_blank" rel="noopener">Original</a>
+          <a class="btn" id="viewer-download" download>Download</a>
+          <button class="btn" id="viewer-delete">Delete</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Help / shortcuts -->
     <aside class="drawer drawer-help" id="help" hidden aria-label="Help">
       <div class="drawer-head">
@@ -162,6 +183,9 @@
         <p><strong>Focus</strong> with the slider or the near/far buttons, or press
           <kbd>AF</kbd> to run an autofocus sweep. With "tap the image" enabled, a tap
           sets the area to focus on - the marker shows where.</p>
+        <p><strong>Photos</strong> with the shutter button, then <kbd>g</kbd> for the grid.
+          Tap a photo there to see it full size; download and delete are in that view, and
+          the left/right arrows step through it.</p>
         <p><strong>Shortcuts:</strong> <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> move,
           <kbd>-</kbd>/<kbd>+</kbd> focus, <kbd>f</kbd> autofocus, <kbd>space</kbd> capture,
           <kbd>c</kbd> centre, <kbd>g</kbd> photos, <kbd>?</kbd> this panel,

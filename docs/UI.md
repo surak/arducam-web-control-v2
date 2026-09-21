@@ -80,6 +80,33 @@ the camera still refuses to go the way you push it. It was caught only by pressi
 against a live page and reading the resulting angle (`tilt_before: 92.2, tilt_after: 90`,
 i.e. up).
 
+## The photo gallery and the viewer
+
+`g` (or the Photos button) opens the grid. `loadGallery()` fills it from
+`GET /api/v1/captures` and keeps that listing in `galleryPhotos`, so the viewer can step
+through photos without asking the server again.
+
+Tiles carry nothing on top of the picture. They used to have download and delete buttons
+absolutely positioned over them, and at the old column widths - 96 px in the base rule,
+120 px in the desktop media query - a tile on a *large* screen held 123x92 px of picture
+with two 28 px buttons sitting on it, so the buttons were most of what the gallery showed.
+That desktop override is the trap worth remembering: the 420 px panel is narrower than a
+phone is wide, so a smaller minimum there produced smaller tiles on the big screen than on
+the phone.
+
+Tapping a tile opens `#viewer`: the photo at `?max_dim=1600` (the original is a 16 MP JPEG
+of about a megabyte, and it is one tap away under "Original" and "Download"), filling the
+space between two bars, with the actions in the bottom bar where they cover nothing.
+
+While the viewer is open it owns the keyboard - Escape closes it, left/right step through
+photos - and that branch sits *above* the steering branch in the key handler on purpose:
+below it the arrows move the camera, and paging through photos must not drive the rig. The
+probe checks exactly that.
+
+Verify: `uv run python scripts/ui_probe.py 8099 390 844 mobile` reports a tile of about
+176x132, `buttonsOnTiles: 0`, a viewer image filling ~85% of the viewport height, and an
+unchanged pan angle across an ArrowRight press.
+
 ## The stream
 
 `GET /api/v1/stream.mjpg` is `multipart/x-mixed-replace; boundary=arducamframe`, each part

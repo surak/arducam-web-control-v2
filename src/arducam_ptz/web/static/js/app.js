@@ -55,6 +55,18 @@ const el = {
   galleryClose: $("btn-gallery-close"),
   scrim: $("scrim"),
 
+  // Full-size photo viewer, opened by tapping a tile in the grid.
+  viewer: $("viewer"),
+  viewerImg: $("viewer-img"),
+  viewerName: $("viewer-name"),
+  viewerMeta: $("viewer-meta"),
+  viewerOpen: $("viewer-open"),
+  viewerDownload: $("viewer-download"),
+  viewerDelete: $("viewer-delete"),
+  viewerPrev: $("viewer-prev"),
+  viewerNext: $("viewer-next"),
+  viewerClose: $("viewer-close"),
+
   help: $("help"),
   helpBtn: $("btn-help"),
   helpClose: $("btn-help-close"),
@@ -536,6 +548,10 @@ async function refreshPhotoCount() {
 /* ------------------------------------------------------------------ gallery */
 
 function closeDrawers() {
+  // One "close everything" for the scrim, the ✕ buttons and the `g` toggle. The viewer
+  // goes too: left standing while its grid is dismissed, it would be a dead end with no
+  // way back to the photos.
+  closeViewer();
   el.gallery.hidden = true;
   el.help.hidden = true;
   el.scrim.hidden = true;
@@ -560,11 +576,10 @@ async function loadGallery() {
   el.galleryGrid.replaceChildren();
   try {
     const photos = await api.captures.list(120);
+    galleryPhotos = photos;
     state.photos = photos.length;
     el.photoCount.textContent = String(photos.length);
-    for (const photo of photos) {
-      el.galleryGrid.append(thumbnail(photo));
-    }
+    photos.forEach((photo, index) => el.galleryGrid.append(thumbnail(photo, index)));
     if (!photos.length) {
       const empty = document.createElement("p");
       empty.className = "muted";
@@ -587,62 +602,118 @@ function photoCaption(photo) {
   return `${dims}${size}${when ? ` · ${when}` : ""}`;
 }
 
-function thumbnail(photo) {
-  const figure = document.createElement("figure");
-  figure.className = "thumb";
+/**
+ * One tile in the gallery grid: the photo, with nothing laid over it.
+ *
+ * Download and delete used to be absolutely positioned on this tile. With the old 96 px
+ * column minimum a phone tile carried about 117 px of picture, so two 28 px buttons and
+ * their gap were most of what you could make out - the photo was the smallest thing in
+ * it. Both actions moved into the viewer; tapping the tile opens it.
+ */
+function thumbnail(photo, index) {
+  // A <button>, not a <figure>: the whole tile becomes the tap target, and a button is
+  // reachable and openable from the keyboard for nothing.
+  const tile = document.createElement("button");
+  tile.type = "button";
+  tile.className = "thumb";
+  tile.title = photo.filename;
 
-  const link = document.createElement("a");
-  link.href = withToken(photo.url);
-  link.target = "_blank";
-  link.rel = "noopener";
   const img = document.createElement("img");
   img.loading = "lazy";
   // Use the server-advertised URLs (so the contract stays the contract) and add the
   // token, which an <img> cannot send as a header.
   img.src = withToken(photo.thumb_url);
   img.alt = photo.filename;
-  link.append(img);
 
-  const caption = document.createElement("figcaption");
-  caption.textContent = photoCaption(photo);
+  const meta = document.createElement("span");
+  meta.className = "thumb-meta";
+  meta.textContent = photoCaption(photo);
 
-  const actions = document.createElement("div");
-  actions.className = "thumb-actions";
-
-  const download = document.createElement("a");
-  download.href = withToken(photo.url);
-  download.download = photo.filename;
-  download.textContent = "⤓";
-  download.title = "Download";
-
-  const remove = document.createElement("button");
-  remove.textContent = "🗑";
-  remove.title = "Delete";
-  remove.addEventListener("click", async () => {
-    // Two-step confirm instead of window.confirm(): a blocking browser dialog steals
-    // focus from the page and, on iOS, can be dismissed by an accidental tap.
-    if (remove.dataset.armed !== "yes") {
-      remove.dataset.armed = "yes";
-      remove.textContent = "!";
-      setTimeout(() => {
-        remove.dataset.armed = "";
-        remove.textContent = "🗑";
-      }, 3000);
-      return;
-    }
-    try {
-      await api.captures.remove(photo.filename);
-      figure.remove();
-      toast(`deleted ${photo.filename}`, "ok");
-    } catch (error) {
-      reportError(error);
-    }
-  });
-
-  actions.append(download, remove);
-  figure.append(link, caption, actions);
-  return figure;
+  tile.append(img, meta);
+  tile.addEventListener("click", () => openViewer(index));
+  return tile;
 }
+
+/* -------------------------------------------------------------- photo viewer */
+
+// The listing the viewer steps through, kept next to the grid so paging through photos
+// does not need the server again.
+let galleryPhotos = [];
+let viewerIndex = -1;
+
+/** Show the photo at `index` of the current listing, at full size. */
+function openViewer(index) {
+  const photo = galleryPhotos[index];
+  if (!photo) return;
+  viewerIndex = index;
+  el.viewer.hidden = false;
+  el.viewerName.textContent = photo.filename;
+  // Ask for a 1600 px rendition rather than the file: the original is a 16 MP JPEG of
+  // about a megabyte, and opening one has to feel instant on a phone. "Original" and
+  // "Download" both still hand over the untouched file.
+  el.viewerImg.src = withToken(`${photo.url}?max_dim=1600`);
+  el.viewerImg.alt = photo.filename;
+  el.viewerMeta.textContent = photoCaption(photo);
+  el.viewerOpen.href = withToken(photo.url);
+  el.viewerDownload.href = withToken(photo.url);
+  el.viewerDownload.download = photo.filename;
+  // Rearm the two-step delete: paging to the next photo must not leave the button one
+  // tap away from deleting it.
+  el.viewerDelete.dataset.armed = "";
+  el.viewerDelete.textContent = "Delete";
+  el.viewerPrev.disabled = index <= 0;
+  el.viewerNext.disabled = index >= galleryPhotos.length - 1;
+}
+
+function closeViewer() {
+  if (el.viewer.hidden) return;
+  el.viewer.hidden = true;
+  // Dropping the source abandons the fetch of a photo nobody is looking at any more.
+  el.viewerImg.removeAttribute("src");
+  viewerIndex = -1;
+}
+
+function stepViewer(delta) {
+  if (viewerIndex < 0) return;
+  const next = viewerIndex + delta;
+  if (next >= 0 && next < galleryPhotos.length) openViewer(next);
+}
+
+el.viewerClose.addEventListener("click", closeViewer);
+el.viewerPrev.addEventListener("click", () => stepViewer(-1));
+el.viewerNext.addEventListener("click", () => stepViewer(1));
+el.viewer.addEventListener("click", (event) => {
+  // Clicking the dark space around the picture closes it, as in every other lightbox.
+  // The image and the two bars are inside .viewer, so they swallow their own clicks.
+  if (event.target === el.viewer) closeViewer();
+});
+
+el.viewerDelete.addEventListener("click", async () => {
+  const photo = galleryPhotos[viewerIndex];
+  if (!photo) return;
+  // Two-step confirm instead of window.confirm(): a blocking browser dialog steals focus
+  // from the page and, on iOS, can be dismissed by an accidental tap.
+  if (el.viewerDelete.dataset.armed !== "yes") {
+    el.viewerDelete.dataset.armed = "yes";
+    el.viewerDelete.textContent = "Sure?";
+    setTimeout(() => {
+      el.viewerDelete.dataset.armed = "";
+      el.viewerDelete.textContent = "Delete";
+    }, 3000);
+    return;
+  }
+  try {
+    await api.captures.remove(photo.filename);
+    toast(`deleted ${photo.filename}`, "ok");
+    // Reload from the server rather than editing the local list: the listing, the count
+    // and the grid then all agree with what is on disk.
+    await loadGallery();
+    if (!galleryPhotos.length) closeViewer();
+    else openViewer(Math.min(viewerIndex, galleryPhotos.length - 1));
+  } catch (error) {
+    reportError(error);
+  }
+});
 
 /* ------------------------------------------------------------------ misc */
 
@@ -664,6 +735,23 @@ document.addEventListener("keydown", (event) => {
   // range input the arrows are the browser's own and give finer control than we can.
   if (editable) return;
   const onButton = target instanceof HTMLElement && target.matches("button");
+
+  // The photo viewer owns the keyboard while it is open, and this branch has to come
+  // first: below, the left/right arrows steer the camera, and looking through photos
+  // must not drive the rig. Escape closes; anything else falls through to the normal
+  // shortcuts, so `g`, `f` and centre still work with a photo open.
+  if (!el.viewer.hidden) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeViewer();
+      return;
+    }
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      stepViewer(event.key === "ArrowLeft" ? -1 : 1);
+      return;
+    }
+  }
 
   // Arrow keys steer exactly like one full tick of the pad, so the keyboard and the
   // joystick cannot disagree about direction. The vector convention is the pad's

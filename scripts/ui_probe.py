@@ -289,6 +289,68 @@ async def main() -> int:
                 await_promise=True,
             )
 
+            # --- the photo viewer.
+            # The gallery used to lay download/delete over a ~117 px tile, so the two
+            # buttons were most of what the tile showed. Tiles now carry no buttons and
+            # tapping one opens the photo large. This measures the rendered result
+            # instead of trusting the stylesheet.
+            await browser.eval("document.getElementById('btn-gallery').click()")
+            await asyncio.sleep(2.5)
+            out["gallery"] = await browser.eval(
+                "(() => { const tiles = [...document.querySelectorAll('.thumb')];"
+                " const img = document.querySelector('.thumb img');"
+                " const r = img ? img.getBoundingClientRect() : null;"
+                " return {tiles: tiles.length,"
+                " imageWidth: r ? Math.round(r.width) : null,"
+                " imageHeight: r ? Math.round(r.height) : null,"
+                " thumbLoaded: img ? img.naturalWidth : null,"
+                " buttonsOnTiles: document.querySelectorAll('.thumb-actions').length}; })()"
+            )
+
+            await browser.eval("document.querySelector('.thumb').click()")
+            await asyncio.sleep(2.5)
+            out["viewer"] = await browser.eval(
+                "(() => { const v = document.getElementById('viewer');"
+                " const img = document.getElementById('viewer-img');"
+                " const r = img.getBoundingClientRect();"
+                " const actions = document.querySelectorAll('.viewer-actions .btn');"
+                " return {hidden: v.hidden, display: getComputedStyle(v).display,"
+                " imageWidth: Math.round(r.width), imageHeight: Math.round(r.height),"
+                " imageLoaded: img.naturalWidth,"
+                " heightShareOfViewport: Math.round((r.height / innerHeight) * 100),"
+                " actions: actions.length,"
+                " name: document.getElementById('viewer-name').textContent}; })()"
+            )
+
+            # Arrows must browse photos while the viewer is open, and must not steer the
+            # camera: the steering branch sits below this one, and getting that order
+            # wrong would move the rig while you look through pictures.
+            pan_before_arrows = await browser.eval(
+                "fetch('/api/v1/state').then(r => r.json()).then(s => s.ptz.pan.angle)",
+                await_promise=True,
+            )
+            name_before = await browser.eval("document.getElementById('viewer-name').textContent")
+            await browser.key("ArrowRight", "ArrowRight", 39)
+            await asyncio.sleep(1.2)
+            out["viewer_arrows"] = {
+                "name_before": name_before,
+                "name_after": await browser.eval(
+                    "document.getElementById('viewer-name').textContent"
+                ),
+                "pan_before": pan_before_arrows,
+                "pan_after": await browser.eval(
+                    "fetch('/api/v1/state').then(r => r.json()).then(s => s.ptz.pan.angle)",
+                    await_promise=True,
+                ),
+            }
+
+            await browser.key("Escape", "Escape", 27)
+            await asyncio.sleep(0.5)
+            out["viewer_after_escape"] = await browser.eval(
+                "({hidden: document.getElementById('viewer').hidden,"
+                " src: document.getElementById('viewer-img').getAttribute('src')})"
+            )
+
             if keep:
                 # Name it after the viewport so a mobile and a desktop run can coexist.
                 shot = Path(f"ui_shot_{width}x{height}.png").resolve()
