@@ -8,9 +8,19 @@ close. Those need a real layout engine, so this script starts headless Chromium,
 it at a running server and asserts on the live DOM.
 
 Usage:
-    python3 ui_probe.py <port> <width> <height> [mobile]
+    python3 ui_probe.py <port> <width> <height> [mobile] [shot] [font=N]
 
-Prints one JSON object with every measurement, so the caller can diff runs.
+`mobile` emulates a phone, `shot` keeps a PNG screenshot named after the viewport and
+font scale, and
+`font=N` scales the browser's standard font size N-fold before loading the page (the
+mechanism behind a phone's "larger text" setting and a raised browser font default):
+text scales, px-sized boxes do not. What that measures is the failure the layout is
+built against - inflated labels overflowing rigid chrome - so a run at font=1.6 is the
+regression test for the readable-at-big-text design, not a nicety.
+
+Prints one JSON object with every measurement, so the caller can diff runs. Controls
+below the fold of a *scrollable* pane are reported as `controlsBelowFold` (reachable by
+swiping); only controls nothing can scroll to are `controlsOffscreen`.
 """
 
 from __future__ import annotations
@@ -30,11 +40,9 @@ import websockets
 
 CDP_PORT = 9333
 
-
 def http_json(path: str):
     with urllib.request.urlopen(f"http://127.0.0.1:{CDP_PORT}{path}", timeout=10) as fh:
         return json.load(fh)
-
 
 class Browser:
     """Minimal CDP client: enough protocol to click, type and measure."""
@@ -113,7 +121,6 @@ class Browser:
         shot = await self.send("Page.captureScreenshot", format="png")
         path.write_bytes(base64.b64decode(shot["data"]))
 
-
 #: Everything the run needs to measure. One expression so the values are consistent.
 PROBE = r"""
 (() => {
@@ -124,17 +131,45 @@ PROBE = r"""
     const r = node.getBoundingClientRect();
     return {x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height)};
   };
+  const name = (n) => (n.id || n.className || n.tagName) + ':' + JSON.stringify(rect(n));
   const pad = document.querySelector('.pad, #pad');
   const image = el('stream');
   const controls = Array.from(document.querySelectorAll('button, input, .pad'))
     .filter((n) => rect(n).w > 0 && rect(n).h > 0);
   const vw = innerWidth, vh = innerHeight;
-  const offscreen = controls
-    .filter((n) => { const r = n.getBoundingClientRect();
-      return r.right > vw + 1 || r.bottom > vh + 1 || r.left < -1 || r.top < -1; })
-    .map((n) => (n.id || n.className || n.tagName) + ':' + JSON.stringify(rect(n)));
+  // Reachability, not just visibility: at large text sizes the controls pane may be
+  // taller than the viewport and scroll inside itself (app.css .controls), which keeps
+  // every control one swipe away. A control is `controlsOffscreen` only when no
+  // scrollable ancestor can bring it into view.
+  const canScrollTo = (n) => {
+    for (let p = n.parentElement; p; p = p.parentElement) {
+      const s = getComputedStyle(p);
+      if ((s.overflowY === 'auto' || s.overflowY === 'scroll') && p.scrollHeight > p.clientHeight + 2)
+        return true;
+    }
+    return false;
+  };
+  const outside = controls.filter((n) => { const r = n.getBoundingClientRect();
+      return r.right > vw + 1 || r.bottom > vh + 1 || r.left < -1 || r.top < -1; });
+  const offscreen = outside.filter((n) => !canScrollTo(n)).map(name);
+  const belowFold = outside.filter((n) => canScrollTo(n)).map(name);
+  // Fixed boxes swallowing inflated text: content wider/taller than its own box, in a
+  // box that clips and is not ellipsing, means the label is cut off. min-sized boxes
+  // grow instead, which is what this pins.
+  const clippedText = Array.from(
+    document.querySelectorAll(
+      'button span, button, .readout, .thumb-meta, .switch span, .panel-head h2, kbd'))
+    .filter((n) => rect(n).w > 0)
+    .filter((n) => {
+      const s = getComputedStyle(n);
+      if (s.overflow === 'visible' || s.textOverflow === 'ellipsis') return false;
+      return n.scrollWidth > n.clientWidth + 2 || n.scrollHeight > n.clientHeight + 2;
+    })
+    .map(name);
+  const pane = document.querySelector('.controls');
   return {
     viewport: {w: vw, h: vh},
+    bodyFontPx: getComputedStyle(document.body).fontSize,
     page: {scrollW: document.documentElement.scrollWidth,
            scrollH: document.documentElement.scrollHeight},
     overlay: {hidden: el('stream-overlay').hidden,
@@ -155,19 +190,23 @@ PROBE = r"""
     bodyUserSelect: style(document.body).userSelect,
     controlsOnScreen: controls.length,
     controlsOffscreen: offscreen,
+    controlsBelowFold: belowFold,
+    clippedText: clippedText,
+    controlsPane: pane ? {scrollH: pane.scrollHeight, clientH: pane.clientHeight} : null,
     streamMeta: el('stream-meta') ? el('stream-meta').textContent : null,
     title: document.title
   };
 })()
 """
 
-
 async def main() -> int:
     port = int(sys.argv[1])
     width = int(sys.argv[2])
     height = int(sys.argv[3])
-    mobile = len(sys.argv) > 4 and sys.argv[4] == "mobile"
-    keep = len(sys.argv) > 5 and sys.argv[5] == "shot"
+    extras = sys.argv[4:]
+    mobile = "mobile" in extras
+    keep = "shot" in extras
+    font_scale = float(next((a.split("=", 1)[1] for a in extras if a.startswith("font=")), "1"))
 
     profile = tempfile.mkdtemp(prefix="ui-probe-")
     chrome = shutil.which("chromium") or shutil.which("chromium-browser")
@@ -186,7 +225,7 @@ async def main() -> int:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    out: dict = {"viewport": f"{width}x{height}", "mobile": mobile}
+    out: dict = {"viewport": f"{width}x{height}", "mobile": mobile, "font_scale": font_scale}
     try:
         # Wait for the debugging endpoint instead of sleeping blindly.
         for _ in range(60):
@@ -204,6 +243,11 @@ async def main() -> int:
             await browser.send("Emulation.setDeviceMetricsOverride",
                                width=width, height=height, deviceScaleFactor=2 if mobile else 1,
                                mobile=mobile)
+            if font_scale != 1:
+                # The same lever as a phone's larger-text setting or a raised browser
+                # font default: rem type scales with it, px-sized boxes do not.
+                # bodyFontPx in the output reports the scale actually achieved.
+                await browser.send("Page.setFontSizes", fontSizes={"standard": round(16 * font_scale)})
             await browser.send("Page.navigate", url=f"http://127.0.0.1:{port}/")
             await asyncio.sleep(6)  # boot + a few MJPEG frames
 
@@ -352,8 +396,10 @@ async def main() -> int:
             )
 
             if keep:
-                # Name it after the viewport so a mobile and a desktop run can coexist.
-                shot = Path(f"ui_shot_{width}x{height}.png").resolve()
+                # Name it after the viewport and the font scale, so a mobile, a desktop and
+                # a font= run can all coexist without clobbering each other's PNG.
+                suffix = f"_font{font_scale:g}" if font_scale else ""
+                shot = Path(f"ui_shot_{width}x{height}{suffix}.png").resolve()
                 await browser.screenshot(shot)
                 out["screenshot"] = str(shot)
 
@@ -374,7 +420,6 @@ async def main() -> int:
 
     print(json.dumps(out, indent=2))
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(asyncio.run(main()))

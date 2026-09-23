@@ -229,3 +229,44 @@ from a shell kills that shell: the pattern is in its own command line. Kill by t
 `systemd --user` can supervise the server, which is how it survives the session that started
 it: `systemd-run --user --unit=arducam-ptz-web --collect --working-directory=<repo> --
 <repo>/.venv/bin/arducam serve --port 8080 --log-level info`.
+
+## 14. Size the type in px and the phone's bigger text breaks the whole layout
+
+**Evidence.** "This web frontend does not work well on my phone... I have bigger fonts on
+my phone and it's an iPhone 13." Worse than small: an iOS larger-text setting inflates
+*text* while px-sized boxes keep their size, so 10-13px labels overflowed their fixed
+34px/40px chrome buttons, and the fixed shell (100dvh grid tracks + `body {
+overflow: hidden }`) clipped whatever slid past the viewport with no way to scroll to it.
+A probe run at 1x text after widening the type reproduced the family exactly:
+`controlsOffscreen` held `focus-far` at x=396 and `btn-gallery` at x=436 - past the right
+edge of a 390px viewport. The half-column phone layout was the amplifier: the button row
+wants ~227px and the column had ~152px.
+
+**This code.** All type in rem (1.0625rem base, nothing under 13px) so the text setting
+scales the interface instead of fighting it; boxes `min-` sized so inflated text grows
+them; every row `flex-wrap` so a row that stops fitting wraps instead of spilling; and the
+phone's controls are a full-width stack - the desktop rail's shape - because at readable
+size a half-wide column cannot hold the rows it hosts.
+
+**Verify.** `scripts/ui_probe.py 8099 390 844 mobile font=1.6` (the reported condition)
+and `font=2.5`: `controlsOffscreen: []`, `clippedText: []`, `bodyFontPx` reporting the
+scale actually applied. Without the `font=` runs, "works at 390x844" verifies only the
+phone he does not have.
+
+## 15. A layout that rounds to a zero box divides into a 422
+
+**Evidence.** At `font=2.5` (and at 320px width) the picture collapsed to a 0x0 element
+box and tap-to-focus answered with a error toast: `http_error: region.x: Input should be a
+valid number`, a 422 on the wire. `regionFromTap()` divided by `content.width` - zero -
+and the resulting NaN serialized as `null` in the request body. The visible complaint is
+about focus; the fault is in layout arithmetic.
+
+**This code.** A size floor under the picture (`max(140px, 20dvh)` on `.stage`; below that
+a photo stops being a photo, and the img box rounds away), plus the rule for the class: a
+geometry helper refuses degenerate inputs before it divides - `regionFromTap` returns
+`null` and the tap does nothing instead of doing something impossible.
+
+**Verify.** The runs above now report `image.rect 272x153` at `font=2.5`,
+`tap_to_focus: {"toast": null, "markerShown": true}` and a running `autofocus` job, with
+an empty `console`. `tests/test_web.py::test_the_photo_has_a_size_floor_and_taps_never_divide_by_zero`
+pins both strings.

@@ -485,6 +485,11 @@ function drawMarker() {
 
 function regionFromTap(clientX, clientY, size = 0.3) {
   const content = contentRect();
+  // A degenerate box must not be divided by: late layout or an image that has not
+  // arrived yet gives width/height 0, and the division below would then POST
+  // `region.x: Input should be a valid number` (NaN on the wire). Nothing to aim at
+  // is not a tap the API can act on - it is a tap that should do nothing.
+  if (!(content.width > 0) || !(content.height > 0)) return null;
   const x = Math.min(1, Math.max(0, (clientX - content.left) / content.width));
   const y = Math.min(1, Math.max(0, (clientY - content.top) / content.height));
   const half = size / 2;
@@ -513,7 +518,9 @@ el.stream.parentElement.addEventListener("pointerup", (event) => {
   if (Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 12) return;
   if (!el.overlay.hidden) return;
 
-  state.region = regionFromTap(event.clientX, event.clientY);
+  const region = regionFromTap(event.clientX, event.clientY);
+  if (!region) return;
+  state.region = region;
   drawMarker();
   runAutofocus(state.region);
 });

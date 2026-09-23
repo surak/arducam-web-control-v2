@@ -135,6 +135,37 @@ class TestNoGoldenOldies:
         assert "object-fit: contain" in css
         assert "min-height: 0" in css  # lets the image shrink instead of hiding controls
 
+    def test_type_is_relative_so_text_settings_scale_the_interface(self) -> None:
+        """Reported bug: on a phone with the text size raised, labels overflowed their buttons.
+
+        px type is absolute - the OS inflates *text* while the boxes around it keep
+        their px size - so at the "larger text" setting the chrome cut its own letters
+        off and the clipped shell hid whole controls behind the home indicator. rem
+        scales with the user's font setting (and with browser zoom) instead of
+        fighting it.
+        """
+        css = CSS.read_text()
+        assert not re.search(r"font-size:\s*\d+px", css), "px type does not follow text-size settings"
+        assert "font-size: 1.0625rem" in css  # 17px at the default 16px root
+
+    def test_tap_targets_are_sized_for_thumbs(self) -> None:
+        """44px is Apple's minimum comfortable target; the old 34px icon buttons missed it."""
+        css = CSS.read_text()
+        icon = re.search(r"\.icon-btn \{(.+?)\}", css, re.DOTALL)
+        assert icon and "min-width: 44px" in icon.group(1) and "min-height: 44px" in icon.group(1)
+        btn = re.search(r"\.btn \{(.+?)\}", css, re.DOTALL)
+        assert btn and "min-height: 48px" in btn.group(1)
+
+    def test_the_photo_has_a_size_floor_and_taps_never_divide_by_zero(self) -> None:
+        """Reported bug: at big text sizes the picture collapsed to 0x0 and the
+        tap-to-focus math divided by that zero, POSTing `region.x: Input should be a
+        valid number`. The stage keeps a floor under the photo and the tap math
+        refuses degenerate boxes before it divides."""
+        css = CSS.read_text()
+        assert "min-height: max(140px, 20dvh)" in css  # the picture floor
+        app = APP_JS.read_text()
+        assert "!(content.width > 0) || !(content.height > 0)" in app  # guard before the division
+
     def test_javascript_never_rebuilds_the_dom(self) -> None:
         """innerHTML on every poll is what made the old page drop selections and reflow."""
         for path in (APP_JS, API_JS, PAD_JS):

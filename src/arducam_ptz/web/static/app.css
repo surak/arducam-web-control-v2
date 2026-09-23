@@ -3,9 +3,10 @@
  *
  * Design goals, in order:
  *
- * 1. The live image and the controls are always both on screen. The shell is a fixed
- *    grid that fills the viewport (100dvh, so mobile browser bars are accounted for);
- *    nothing scrolls except the controls column on large screens.
+ * 1. The live image and the controls are always both on screen. The shell fills the
+ *    viewport (100dvh, so mobile browser bars are accounted for); nothing scrolls
+ *    except the controls column on large screens - and, as a last resort at extreme
+ *    text sizes, the controls pane inside itself (see .controls).
  * 2. The layout is mobile-first. Portrait phone: image on top, pad bottom-left, focus
  *    and the shutter bottom-right - all thumb-reachable. Landscape phone and desktop:
  *    image left, a controls column on the right.
@@ -17,6 +18,12 @@
  * 4. No layout thrash while dragging: the pad moves with a CSS transform on a small
  *    absolutely positioned knob, and state readouts are updated as text, never by
  *    rebuilding DOM.
+ * 5. Text is sized in rem and chrome boxes are sized in minimums, never fixed height/
+ *    width around text. A user with the phone's text size turned up gets a scaled-up
+ *    interface - the OS inflates *text*, and a text-sized box would cut the bigger
+ *    letters off instead of growing with them. (Reported bug: at the "larger text"
+ *    setting on an iPhone the labels overflowed their buttons and the clipped shell
+ *    hid the controls behind the home indicator.)
  */
 
 :root {
@@ -25,7 +32,9 @@
   --panel-2: #1d232d;
   --line: #2a3240;
   --text: #e8edf5;
-  --muted: #8b97a8;
+  /* 7.2:1 on --panel-2: muted used to be 5.3:1 and 11px on top of it, which is the
+     combination that made the readouts unreadable at arm's length. */
+  --muted: #a3b0c2;
   --accent: #4c9aff;
   --accent-2: #38d39f;
   --danger: #ff6b6b;
@@ -68,7 +77,12 @@ body {
 body {
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* All type is in rem (never px), so the phone's or browser's text-size setting
+     scales the whole interface together with it; 1.0625rem is 17px at the default
+     16px root - big enough to read at arm's length without any setting at all. */
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 1.0625rem;
+  line-height: 1.45;
   /* Selecting text by accident while dragging is one of the old bugs; the chrome is
      not text a user needs to select. Anything meant to be copied overrides this. */
   -webkit-user-select: none;
@@ -76,9 +90,17 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/*
+ * The shell: a flex column, not a stack of fixed grid rows. The image (.stage,
+ * flex 1 1 0) takes every pixel of slack and gives back first when space runs out;
+ * the top bar and the controls keep their content height. Only when text is inflated
+ * past what one screen can hold do the controls shrink (min-height) and scroll
+ * inside themselves - where the old fixed rows slid them under the home indicator,
+ * gone for good, with `overflow: hidden` on body as the lock on the door.
+ */
 .shell {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   height: 100dvh;
   /* Clear the notch (top) and the home indicator (bottom) on iOS. */
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
@@ -89,6 +111,7 @@ body {
 
 .topbar {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
@@ -97,14 +120,14 @@ body {
 }
 
 .brand {
-  font-size: 14px;
+  font-size: 1rem;
   letter-spacing: 0.02em;
 }
 
 .topbar-meta {
   margin-left: auto;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
@@ -112,8 +135,9 @@ body {
 }
 
 .dot {
-  width: 9px;
-  height: 9px;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
   border-radius: 50%;
   background: var(--muted);
   box-shadow: 0 0 0 3px rgb(255 255 255 / 4%);
@@ -132,14 +156,21 @@ body {
   background: var(--danger);
 }
 
+/*
+ * Icon buttons: 44x44 min is the iOS comfortable tap target, and *min* (with
+ * padding) instead of a fixed width/height is what lets the glyph inside grow with
+ * an inflated text size instead of being clipped by its own button.
+ */
 .icon-btn {
-  width: 34px;
-  height: 34px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel-2);
   color: var(--text);
-  font-size: 15px;
+  font: inherit;
+  font-size: 1.25rem;
   line-height: 1;
   cursor: pointer;
   touch-action: manipulation;
@@ -155,9 +186,15 @@ body {
 .stage {
   position: relative;
   display: flex;
+  flex: 1 1 0;
   align-items: center;
   justify-content: center;
-  min-height: 0; /* lets the image shrink instead of pushing the controls off screen */
+  /* The image gives way before the controls do (min-height: 0), but not past the
+     floor: max(140px, 20dvh) is where a photo stops being a photo. Below it the img
+     box rounds to zero and tap-to-focus divides by that zero, so the floor is also
+     what keeps every tap landing on a real picture. When the floor bites, the
+     controls pane scrolls instead (see .controls). */
+  min-height: max(140px, 20dvh);
   padding: 8px;
   overflow: hidden;
   background: #05070a;
@@ -209,16 +246,34 @@ body {
   border-radius: 8px;
   background: rgb(5 7 10 / 65%);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 0.9375rem;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
 
 /* ---------------------------------------------------------------- controls */
 
+/*
+ * The controls are a full-width stack under the photo on a phone - the same shape
+ * the desktop rail uses. The reason is measured, not stylistic: at the type sizes an
+ * older reader needs (17px+ base), a half-wide column cannot hold
+ * `◀ near | AF | far ▶`, a shutter and a `Photos` button - the row needs ~227px and
+ * the column has ~152px, so the buttons ran past the right edge of a viewport that
+ * `overflow: hidden` then hid behind for good. Every row is a flex-wrap row, so at
+ * large text a row breaks onto a new line instead of spilling. flex: 0 1 auto +
+ * min-height: 0 is the rest of the resilience story: while the image can give up
+ * room the pane is as tall as its content; when there is none left, the pane shrinks
+ * and scrolls inside itself instead of the shell overflowing into the clipped body.
+ * The pane never scrolls at normal text sizes - scripts/ui_probe.py measures
+ * controlsPane (scrollH vs clientH) at several font= scales to keep that honest.
+ */
 .controls {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   gap: 10px;
   padding: 10px;
   border-top: 1px solid var(--line);
@@ -226,25 +281,25 @@ body {
 }
 
 .panel {
-  padding: 10px;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel-2);
-}
-
-.panel-ptz {
-  grid-row: span 2;
 }
 
 .panel-capture {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
+/* flex-wrap on every row: a row that no longer fits its panel wraps to the next
+   line (or under its label) instead of pushing its last button past the edge. */
 .panel-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   margin-bottom: 8px;
@@ -252,37 +307,45 @@ body {
 
 .panel-head h2 {
   margin: 0;
-  font-size: 12px;
+  font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
+/* The numbers are the content here (angles, focus position), so they are body-size
+   and body-coloured - the label above them is the part that can afford to recede. */
 .readout {
-  font-size: 11px;
+  font-size: 1rem;
   font-variant-numeric: tabular-nums;
-  color: var(--muted);
+  color: var(--text);
 }
 
+/* flex-wrap on every row; `flex: 1 1 auto` (not `1`, whose zero-basis items never
+   trigger the wrap) so a row that stops fitting breaks onto a new line instead of
+   pushing its last button past the edge of a clipped viewport. */
 .row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .row > * {
-  flex: 1;
+  flex: 1 1 auto;
 }
 
+/* min-height 48px, not 40: a thumb lands on these with less precision than a mouse
+   ever needed, and the bar is what inflated text measures itself against. */
 .btn {
-  min-height: 40px;
+  min-height: 48px;
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #232b37;
   color: var(--text);
   font: inherit;
-  font-size: 13px;
+  font-size: 1.0625rem;
   cursor: pointer;
   /* Tapping a button must be instant and must not wait for a double-tap-to-zoom check. */
   touch-action: manipulation;
@@ -341,8 +404,8 @@ body {
 
 .pad-hint {
   position: absolute;
-  color: rgb(255 255 255 / 22%);
-  font-size: 10px;
+  color: rgb(255 255 255 / 35%);
+  font-size: 1.25rem;
   pointer-events: none;
 }
 
@@ -392,9 +455,11 @@ body {
 
 /* ---------------------------------------------------------------- focus */
 
+/* 44px of slider is a slider you can hit with a thumb; the 28px knob is the part
+   that used to be 24 and a constant source of retry-on-the-phone. */
 .slider {
   width: 100%;
-  height: 32px;
+  height: 44px;
   margin: 0 0 8px;
   background: transparent;
   touch-action: pan-y; /* vertical page gestures stay with the browser, horizontal is ours */
@@ -409,9 +474,9 @@ body {
 }
 
 .slider::-webkit-slider-thumb {
-  width: 24px;
-  height: 24px;
-  margin-top: -9px;
+  width: 28px;
+  height: 28px;
+  margin-top: -11px;
   border: 2px solid #0d1219;
   border-radius: 50%;
   background: var(--accent);
@@ -425,8 +490,8 @@ body {
 }
 
 .slider::-moz-range-thumb {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border: 2px solid #0d1219;
   border-radius: 50%;
   background: var(--accent);
@@ -434,7 +499,7 @@ body {
 
 .progress {
   position: relative;
-  height: 8px;
+  height: 20px;
   margin: 8px 0;
   border-radius: 4px;
   background: #2c3542;
@@ -448,12 +513,14 @@ body {
   transition: width 0.2s linear;
 }
 
+/* Grid-centred, never a line-height fudge: the bar is 20px and the label sits in it
+   centred at any text size, where line-height: 8px was a bet on a 10px font. */
 .progress-label {
   position: absolute;
   inset: 0;
-  font-size: 10px;
-  line-height: 8px;
-  text-align: center;
+  display: grid;
+  place-items: center;
+  font-size: 0.8125rem;
 }
 
 .switch {
@@ -462,20 +529,23 @@ body {
   gap: 8px;
   margin-top: 8px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 1.0625rem;
 }
 
 .switch input {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
   accent-color: var(--accent);
 }
 
 /* ---------------------------------------------------------------- shutter */
 
+/* 72px: the one control that must never be missed. A camera app shutter is big on
+   purpose, and this one has no text to rescue at high text sizes. */
 .shutter {
-  width: 62px;
-  height: 62px;
+  width: 72px;
+  height: 72px;
   flex: 0 0 auto;
   border: 3px solid #38424f;
   border-radius: 50%;
@@ -495,11 +565,11 @@ body {
 
 .count {
   display: inline-block;
-  min-width: 16px;
-  padding: 0 4px;
+  min-width: 22px;
+  padding: 0 6px;
   border-radius: 8px;
   background: #313b49;
-  font-size: 11px;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -533,7 +603,7 @@ body {
 
 .drawer-head h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: 1.125rem;
 }
 
 .grid {
@@ -576,9 +646,9 @@ body {
 
 .thumb-meta {
   display: block;
-  padding: 4px 6px;
+  padding: 5px 7px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 0.8125rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -621,7 +691,7 @@ body {
 .viewer-name,
 .viewer-meta {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.9375rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -659,7 +729,7 @@ body {
   overflow-y: auto;
   overscroll-behavior: contain;
   color: var(--text);
-  font-size: 13px;
+  font-size: 1.0625rem;
 }
 
 .help-body p {
@@ -668,7 +738,7 @@ body {
 
 .help-body .muted {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.9375rem;
 }
 
 .help-body a {
@@ -682,7 +752,7 @@ kbd {
   border-radius: 5px;
   background: #232b37;
   font: inherit;
-  font-size: 11px;
+  font-size: 0.875rem;
 }
 
 /* ---------------------------------------------------------------- toasts */
@@ -707,7 +777,7 @@ kbd {
   border-radius: 10px;
   background: rgb(21 26 34 / 96%);
   box-shadow: var(--shadow);
-  font-size: 12px;
+  font-size: 1rem;
 }
 
 .toast.is-error {
@@ -739,6 +809,7 @@ kbd {
  */
 @media (width >= 900px), (height <= 520px) and (width >= 560px) {
   .shell {
+    display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     grid-template-columns: minmax(0, 1fr) 320px;
   }
