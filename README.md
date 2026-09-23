@@ -64,6 +64,10 @@ uv run arducam status            # same machine, from the terminal
 
 Open `http://<pi-address>:8080/` on your phone or laptop.
 
+From outside the house, `./run.sh` starts the server and a Cloudflare quick tunnel in one
+step and prints a `https://<words>.trycloudflare.com` URL the phone can use as-is
+(`PORT=8098 ./run.sh --simulate` runs the same thing with fake hardware on another port).
+
 ## Command line
 
 `arducam` is not a second implementation of the camera - it is an HTTP client, so it runs
