@@ -152,3 +152,7 @@ uv run --with websockets python scripts/ui_probe.py 8099 1440 900 desktop
   network or behind a TLS reverse proxy otherwise; see `docs/API.md` ("Authentication").
 * Photo capture briefly switches sensor mode, so the preview freezes for roughly
   0.5 s per shot (measured).
+
+## License
+
+MIT - see `LICENSE`. Copyright (c) 2026 Alexandre Strube.

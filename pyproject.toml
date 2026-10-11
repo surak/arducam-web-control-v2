@@ -5,6 +5,8 @@ description = "Responsive web + CLI control for an Arducam 16 MP autofocus camer
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Alexandre Strube" }]
+license = "MIT"
+license-files = ["LICENSE"]
 # Deliberately NOT listed: picamera2 / libcamera. They are Debian packages on
 # Raspberry Pi OS (python3-picamera2 pulls the matching libcamera bindings) and
 # installing them from PyPI instead breaks the ABI against the system libcamera.
@@ -29,7 +31,7 @@ arducam = "arducam_ptz.cli:main"
 arducam-server = "arducam_ptz.server:main"
 
 [project.urls]
-Source = "https://github.com/alex/arducam-web-control-v2"
+Source = "https://github.com/surak/arducam-web-control-v2"
 
 [dependency-groups]
 dev = [
@@ -46,7 +48,7 @@ build-backend = "hatchling.build"
 packages = ["src/arducam_ptz"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "config", "docs", "README.md"]
+include = ["src", "tests", "config", "docs", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
